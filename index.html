@@ -37,17 +37,19 @@
     padding: 12px 14px; margin-bottom: 12px;
   }
   summary { font-size: 14px; font-weight: 600; cursor: pointer; }
-  #settingsPanel {
+  /* 设置和贴士改成浮层：不挤占页面高度，打开时页面不会跳 */
+  #settingsPanel, #helpPanel {
+    position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+    width: min(420px, calc(100vw - 32px));
+    max-height: calc(100vh - 80px); overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
-    padding: 12px 14px; margin-bottom: 12px;
+    padding: 12px 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .14);
+    z-index: 20;
   }
   #advBox { border: none; background: transparent; padding: 8px 0 0; margin: 0; }
   #advBox summary { font-weight: 400; font-size: 13px; color: #6b7280; }
-  #helpPanel {
-    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
-    padding: 12px 14px; margin-bottom: 12px;
-    font-size: 13px; line-height: 1.75; color: #52525b;
-  }
+  #helpPanel { font-size: 13px; line-height: 1.75; color: #52525b; }
   #helpPanel p + p { margin-top: 8px; }
   .row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
   .row label { width: 72px; font-size: 13px; color: #52525b; flex-shrink: 0; }
@@ -240,16 +242,27 @@ loadSettings();
   $(id).onchange = saveSettings;
 });
 $("engine").onchange = function () { updateEngineUI(); saveSettings(); };
-/* 右上角两个小图标：设置 / 使用贴士，打开一个就收起另一个 */
+/* 右上角两个小图标：设置 / 使用贴士，打开一个就收起另一个；点空白处也收起 */
+function closePanels() {
+  $("settingsPanel").hidden = true; $("gearBtn").classList.remove("on");
+  $("helpPanel").hidden = true; $("helpBtn").classList.remove("on");
+}
 function togglePanel(panelId, btnId) {
   var p = $(panelId), b = $(btnId);
   var willOpen = p.hidden;
-  $("settingsPanel").hidden = true; $("gearBtn").classList.remove("on");
-  $("helpPanel").hidden = true; $("helpBtn").classList.remove("on");
+  closePanels();
   if (willOpen) { p.hidden = false; b.classList.add("on"); }
+  else setTimeout(function () { scrollBottom(); }, 0);   // 收起后若原本就在底部，重新跟随
 }
 $("gearBtn").onclick = function () { togglePanel("settingsPanel", "gearBtn"); };
 $("helpBtn").onclick = function () { togglePanel("helpPanel", "helpBtn"); };
+document.addEventListener("click", function (e) {
+  if ($("settingsPanel").hidden && $("helpPanel").hidden) return;
+  if ($("settingsPanel").contains(e.target) || $("helpPanel").contains(e.target)) return;
+  if ($("gearBtn").contains(e.target) || $("helpBtn").contains(e.target)) return;
+  closePanels();
+  setTimeout(function () { scrollBottom(); }, 0);
+});
 
 /* ---------- 测试连接：把真实错误露出来，方便排查 ---------- */
 $("testBtn").onclick = function () {
@@ -428,14 +441,18 @@ function nearBottom() {
   return (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 160);
 }
 function scrollBottom() {
-  if (!nearBottom()) return;          // 用户正在往上翻，先不打断
+  if (!nearBottom() || panelOpen()) return;   // 用户正在往上翻、或正在看设置面板时，不打断
   ignoreScroll = true;
   window.scrollTo(0, document.body.scrollHeight);
   setTimeout(function () { ignoreScroll = false; }, 120);
 }
+/* 打开设置 / 贴士面板时，暂停所有自动滚动 */
+function panelOpen() {
+  return !$("settingsPanel").hidden || !$("helpPanel").hidden;
+}
 /* 往上翻看旧记录时，手停下来 2 秒就自动回到最新位置 */
 function scheduleAutoBack() {
-  if (ignoreScroll) return;
+  if (ignoreScroll || panelOpen()) return;
   clearTimeout(autoBackTimer);
   if (nearBottom()) return;
   autoBackTimer = setTimeout(function () {
