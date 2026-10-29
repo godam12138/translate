@@ -12,11 +12,20 @@
     background: #f5f6f7; color: #171717;
     padding: 16px 16px 48px; max-width: 760px; margin: 0 auto;
   }
-  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  h1 { font-size: 20px; font-weight: 600; }
-  #status { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #52525b; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: #9ca3af; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  h1 { font-size: 20px; font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #status { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #52525b; min-width: 0; flex-shrink: 1; }
+  #statusText { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #9ca3af; flex-shrink: 0; }
   .dot.on { background: #10b981; }
+  .iconBtn {
+    width: 36px; height: 36px; flex-shrink: 0; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid #e5e7eb; border-radius: 50%;
+    background: #fff; color: #52525b; cursor: pointer;
+  }
+  .iconBtn svg { width: 18px; height: 18px; }
+  .iconBtn.on { background: #ecfdf5; border-color: #10b981; color: #047857; }
 
   .warn {
     background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
@@ -28,8 +37,18 @@
     padding: 12px 14px; margin-bottom: 12px;
   }
   summary { font-size: 14px; font-weight: 600; cursor: pointer; }
-  details details { border: none; padding: 8px 0 0; margin: 0; background: transparent; }
-  details details summary { font-weight: 400; font-size: 13px; color: #6b7280; }
+  #settingsPanel {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  #advBox { border: none; background: transparent; padding: 8px 0 0; margin: 0; }
+  #advBox summary { font-weight: 400; font-size: 13px; color: #6b7280; }
+  #helpPanel {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 12px;
+    font-size: 13px; line-height: 1.75; color: #52525b;
+  }
+  #helpPanel p + p { margin-top: 8px; }
   .row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
   .row label { width: 72px; font-size: 13px; color: #52525b; flex-shrink: 0; }
   .row select, .row input {
@@ -78,11 +97,9 @@
   #summaryBox h3 { font-size: 14px; font-weight: 600; color: #2563eb; margin-bottom: 8px; }
   #summaryText { font-size: 14px; line-height: 1.7; white-space: pre-wrap; color: #111827; }
 
-  .tips { font-size: 12px; color: #6b7280; line-height: 1.7; margin-top: 16px; }
-
   @media (prefers-color-scheme: dark) {
     body { background: #101012; color: #e5e7eb; }
-    details, #list li, .row select, .row input, .row button, #current, #bar .miniBtn, #summaryBox { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
+    details, #list li, .row select, .row input, .row button, #current, #bar .miniBtn, #summaryBox, #settingsPanel, .iconBtn, #helpPanel { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
     #list .en { color: #f3f4f6; }
     #pauseBtn { background: #2a2114; border-color: #6b4a20; color: #fbbf24; }
     #summaryText { color: #e5e7eb; }
@@ -94,6 +111,19 @@
 <header>
   <h1>课堂同传</h1>
   <div id="status"><span class="dot"></span><span id="statusText">未开始</span></div>
+  <button id="helpBtn" class="iconBtn" type="button" aria-label="使用贴士" title="使用贴士">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <circle cx="12" cy="12" r="9.5"></circle>
+      <line x1="12" y1="6.8" x2="12" y2="13"></line>
+      <circle cx="12" cy="16.6" r="1.1" fill="currentColor" stroke="none"></circle>
+    </svg>
+  </button>
+  <button id="gearBtn" class="iconBtn" type="button" aria-label="设置" title="设置">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3.2"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+  </button>
 </header>
 
 <div id="supportWarn" class="warn" hidden>
@@ -101,8 +131,14 @@
   iPad 请用 <b>Safari</b> 打开本页；安卓平板请用 <b>Edge</b> 试试；电脑请用 Edge 或 Chrome。
 </div>
 
-<details id="settingsBox">
-  <summary>设置</summary>
+<div id="helpPanel" hidden>
+  <p>坐在离老师近的位置收音更准；使用中不要锁屏、不要切走页面（iPad 可以开分屏一边记笔记）。</p>
+  <p>老师说中文时识别会变乱，属正常现象；专业术语翻得生硬也正常，免费小模型的能力上限就在这。</p>
+  <p>一整天的课建议下课后点一次「保存文件」，浏览器本地只保留最近 500 条。</p>
+  <p>课间休息记得点「暂停」，暂停期间不会收音、不会记入课间闲聊，但已识别的内容会继续翻译完。</p>
+</div>
+
+<div id="settingsPanel" hidden>
   <div class="row">
     <label>翻译引擎</label>
     <select id="engine">
@@ -140,7 +176,7 @@
     <button id="fontDown">A−</button>
     <button id="fontUp">A＋</button>
   </div>
-</details>
+</div>
 
 <div id="bar">
   <button id="mainBtn">开始翻译</button>
@@ -157,11 +193,6 @@
 
 <ul id="list"></ul>
 <div id="current" hidden></div>
-
-<p class="tips">
-  小贴士：坐在离老师近的位置收音更准；使用中不要锁屏、不要切走页面（iPad 可用分屏）；老师说中文时识别会变乱属正常现象；
-  默认的 MyMemory 有每日字符限额，适合"跟不上时看一眼"；要整节课全覆盖，就在设置里切换成大模型接口（硅基流动的 Qwen3-8B 长期免费）。
-</p>
 
 <script>
 "use strict";
@@ -193,7 +224,8 @@ function loadSettings() {
     if (s.tts) $("ttsSel").value = s.tts;
     if (s.mm) $("mmEmail").value = s.mm;
   } catch (e) {}
-  $("settingsBox").open = !s.key;   // 已经填过 Key 就默认收起设置，界面更干净
+  $("settingsPanel").hidden = !!s.key;   // 已经填过 Key 就默认收起设置，界面更干净
+  $("gearBtn").classList.toggle("on", !$("settingsPanel").hidden);
   updateEngineUI();
 }
 function updateEngineUI() {
@@ -208,6 +240,16 @@ loadSettings();
   $(id).onchange = saveSettings;
 });
 $("engine").onchange = function () { updateEngineUI(); saveSettings(); };
+/* 右上角两个小图标：设置 / 使用贴士，打开一个就收起另一个 */
+function togglePanel(panelId, btnId) {
+  var p = $(panelId), b = $(btnId);
+  var willOpen = p.hidden;
+  $("settingsPanel").hidden = true; $("gearBtn").classList.remove("on");
+  $("helpPanel").hidden = true; $("helpBtn").classList.remove("on");
+  if (willOpen) { p.hidden = false; b.classList.add("on"); }
+}
+$("gearBtn").onclick = function () { togglePanel("settingsPanel", "gearBtn"); };
+$("helpBtn").onclick = function () { togglePanel("helpPanel", "helpBtn"); };
 
 /* ---------- 测试连接：把真实错误露出来，方便排查 ---------- */
 $("testBtn").onclick = function () {
@@ -343,7 +385,7 @@ function translateQueued(text, onPartial) {
   return new Promise(function (resolve, reject) {
     var job = { text: text, onPartial: onPartial, resolve: resolve, reject: reject };
     if (active >= MAX_CONC) {
-      if (waiting.length >= 6) { reject(new Error("排队太多，这行先跳过")); return; }
+      if (waiting.length >= 24) { reject(new Error("排队太多，这行先跳过")); return; }
       waiting.push(job);
       return;
     }
@@ -361,6 +403,17 @@ function runJob(job) {
 function nextJob() {
   while (active < MAX_CONC && waiting.length) runJob(waiting.shift());
 }
+/* 等队列里所有句子翻完（最多等 60 秒），结束/暂停后用来保证没有漏翻 */
+function drainJobs() {
+  return new Promise(function (resolve) {
+    var deadline = Date.now() + 60000;
+    var check = function () {
+      if ((active === 0 && waiting.length === 0) || Date.now() > deadline) { resolve(); return; }
+      setTimeout(check, 300);
+    };
+    check();
+  });
+}
 /* 限流或网络抖动时，等 1.8 秒重试一次 */
 function translateRetry(text, onPartial) {
   return translate(text, onPartial).catch(function (e) {
@@ -370,10 +423,30 @@ function translateRetry(text, onPartial) {
 }
 
 /* ---------- 字幕条目 ---------- */
+var autoBackTimer = null, ignoreScroll = false;
 function nearBottom() {
   return (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 160);
 }
-function scrollBottom() { if (nearBottom()) window.scrollTo(0, document.body.scrollHeight); }
+function scrollBottom() {
+  if (!nearBottom()) return;          // 用户正在往上翻，先不打断
+  ignoreScroll = true;
+  window.scrollTo(0, document.body.scrollHeight);
+  setTimeout(function () { ignoreScroll = false; }, 120);
+}
+/* 往上翻看旧记录时，手停下来 2 秒就自动回到最新位置 */
+function scheduleAutoBack() {
+  if (ignoreScroll) return;
+  clearTimeout(autoBackTimer);
+  if (nearBottom()) return;
+  autoBackTimer = setTimeout(function () {
+    ignoreScroll = true;
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    setTimeout(function () { ignoreScroll = false; }, 800);
+  }, 2000);
+}
+["scroll", "touchstart", "touchmove", "pointerdown", "wheel"].forEach(function (ev) {
+  window.addEventListener(ev, scheduleAutoBack, { passive: true });
+});
 
 /* 把零碎的识别片段拼成完整句子再翻译：上下文越长，翻译越准 */
 var pending = "", pendingTimer = null;
@@ -584,7 +657,7 @@ $("mainBtn").onclick = function () {
     startRec();
   } else {
     stopAll();
-    setTimeout(summarize, 1200);   // 等最后几句翻完再总结
+    drainJobs().then(summarize);   // 等最后几句都翻完，再总结
   }
 };
 
