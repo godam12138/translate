@@ -76,6 +76,16 @@
     font-size: 13px; padding: 10px 12px; border: 1px solid #d1d5db;
     border-radius: 10px; background: #fff; color: #171717; cursor: pointer;
   }
+  .miniBtn {
+    font-size: 13px; padding: 8px 12px; border: 1px solid #d1d5db;
+    border-radius: 10px; background: #fff; color: #171717; cursor: pointer;
+  }
+  #bar2 { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  #bar2 #counter { flex: 1; }
+  #bar2 .miniBtn {
+    font-size: 13px; padding: 8px 12px; border: 1px solid #d1d5db;
+    border-radius: 10px; background: #fff; color: #171717; cursor: pointer;
+  }
 
   #current {
     background: #fff; border: 1px dashed #d1d5db; border-radius: 12px;
@@ -97,14 +107,51 @@
     padding: 12px 14px; margin-bottom: 12px;
   }
   #summaryBox h3 { font-size: 14px; font-weight: 600; color: #2563eb; margin-bottom: 8px; }
+  #summaryBox .sumHead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  #summaryBox .sumHead strong { font-size: 14px; font-weight: 600; color: #2563eb; flex: 1; }
+  #sumToggle {
+    font-size: 12px; padding: 5px 10px; border-radius: 8px;
+    border: 1px solid #dbeafe; background: #eff6ff; color: #1d4ed8; cursor: pointer;
+  }
+  #summaryText[hidden] { display: none; }
+
+  /* 会议记录面板 */
+  #historyPanel {
+    position: fixed; inset: 0; z-index: 30; background: #fff;
+    padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  .histHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .histHead strong { font-size: 18px; }
+  .sess { border: 1px solid #e5e7eb; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .sessTop { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .sessDate { font-size: 14px; font-weight: 600; flex: 1; }
+  .sessMeta { font-size: 12px; color: #6b7280; }
+  .sessArrow { font-size: 12px; color: #9ca3af; }
+  .sessBody { margin-top: 10px; }
+  .sessSum {
+    font-size: 13px; line-height: 1.7; color: #065f46;
+    background: #f0fdf4; border-radius: 8px; padding: 8px 10px; white-space: pre-wrap;
+  }
+  .sessRec { margin-top: 8px; font-size: 12px; color: #52525b; }
+  .sessRec div { padding: 5px 0; border-bottom: 1px dashed #f3f4f6; }
+  .sessRec .en { color: #374151; }
+  .sessRec .zh { color: #1d4ed8; }
+  .sessOps { display: flex; gap: 8px; margin-top: 10px; }
+  .histEmpty { font-size: 13px; color: #9ca3af; text-align: center; padding: 40px 0; line-height: 1.8; }
   #summaryText { font-size: 14px; line-height: 1.7; white-space: pre-wrap; color: #111827; }
 
   @media (prefers-color-scheme: dark) {
     body { background: #101012; color: #e5e7eb; }
-    details, #list li, .row select, .row input, .row button, #current, #bar .miniBtn, #summaryBox, #settingsPanel, .iconBtn, #helpPanel { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
+    details, #list li, .row select, .row input, .row button, #current, #bar .miniBtn, #bar2 .miniBtn, .miniBtn, #summaryBox, #settingsPanel, .iconBtn, #helpPanel { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
     #list .en { color: #f3f4f6; }
     #pauseBtn { background: #2a2114; border-color: #6b4a20; color: #fbbf24; }
     #summaryText { color: #e5e7eb; }
+    #sumToggle { background: #132238; border-color: #1e3a5f; color: #93c5fd; }
+    #historyPanel, .sess { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
+    .sessSum { background: #14261c; color: #86efac; }
+    .sessRec .en { color: #d1d5db; }
+    .sessRec .zh { color: #93c5fd; }
+    .sessTop { color: #e5e7eb; }
     .warn { background: #2a1414; border-color: #5b2020; color: #fca5a5; }
   }
 </style>
@@ -183,18 +230,32 @@
 <div id="bar">
   <button id="mainBtn">开始翻译</button>
   <button id="pauseBtn" class="miniBtn" hidden>暂停</button>
+</div>
+<div id="bar2">
   <span id="counter"></span>
   <button id="exportBtn" class="miniBtn">保存文件</button>
+  <button id="historyBtn" class="miniBtn">会议记录</button>
   <button id="clearBtn" class="miniBtn">清空</button>
 </div>
 
 <div id="summaryBox" hidden>
-  <h3>要点总结</h3>
+  <div class="sumHead">
+    <strong>要点总结</strong>
+    <button id="sumToggle" type="button">收起</button>
+  </div>
   <div id="summaryText"></div>
 </div>
 
 <ul id="list"></ul>
 <div id="current" hidden></div>
+
+<div id="historyPanel" hidden>
+  <div class="histHead">
+    <strong>会议记录</strong>
+    <button id="histClose" class="miniBtn" type="button">关闭</button>
+  </div>
+  <div id="histList"></div>
+</div>
 
 <script>
 "use strict";
@@ -487,6 +548,119 @@ function pushFinal(t) {
 var logKey = "tongchuan_log", records = [];
 try { records = JSON.parse(localStorage.getItem(logKey) || "[]"); } catch (e) { records = []; }
 function saveLog() { try { localStorage.setItem(logKey, JSON.stringify(records.slice(-500))); } catch (e) {} }
+
+/* ---------- 会议记录：每次「开始 → 结束」自动存档一条 ---------- */
+var sessKey = "tongchuan_sessions", sessions = [], sessionStart = 0, sessionMark = 0;
+try { sessions = JSON.parse(localStorage.getItem(sessKey) || "[]"); } catch (e) { sessions = []; }
+function saveSessions() {
+  try { localStorage.setItem(sessKey, JSON.stringify(sessions.slice(-25))); }
+  catch (e) { alert("本机存储空间不足，请先在「会议记录」里导出并删除旧会议"); }
+}
+function archiveSession() {
+  var rs = records.slice(sessionMark);
+  if (!rs.length) return;
+  sessions.push({
+    id: Date.now(),
+    start: sessionStart || Date.now(),
+    end: Date.now(),
+    summary: summaryText || "",
+    records: rs
+  });
+  saveSessions();
+  sessionMark = records.length;
+}
+function fmtTime(ts, withTime) {
+  var d = new Date(ts), p = function (n) { return ("0" + n).slice(-2); };
+  var s = d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  if (withTime) s += " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  return s;
+}
+function exportSession(s) {
+  var p = function (n) { return ("0" + n).slice(-2); };
+  var md = "# 课堂记录 " + fmtTime(s.start, true) + "\n\n";
+  if (s.summary) md += "## 要点总结\n\n" + s.summary + "\n\n";
+  md += "## 完整记录（共 " + s.records.length + " 条）\n\n";
+  md += s.records.map(function (r) {
+    var d = new Date(r.ts);
+    return "**[" + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()) + "]** " + r.en +
+           "\n\n> " + (r.zh || "（未翻译）") + "\n";
+  }).join("\n");
+  var blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+  var a = document.createElement("a"), d2 = new Date(s.start);
+  a.href = URL.createObjectURL(blob);
+  a.download = "课堂记录_" + d2.getFullYear() + p(d2.getMonth() + 1) + p(d2.getDate()) + "_" + p(d2.getHours()) + p(d2.getMinutes()) + ".md";
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+}
+function renderHistory() {
+  var box = $("histList");
+  box.innerHTML = "";
+  if (!sessions.length) {
+    box.innerHTML = '<p class="histEmpty">还没有会议记录。<br>点「开始翻译」听课，点「结束」后会自动存一条，<br>包含 AI 要点和完整中英记录。</p>';
+    return;
+  }
+  sessions.slice().reverse().forEach(function (s) {
+    var mins = Math.max(1, Math.round((s.end - s.start) / 60000));
+    var wrap = document.createElement("div"); wrap.className = "sess";
+
+    var top = document.createElement("div"); top.className = "sessTop";
+    var date = document.createElement("span"); date.className = "sessDate"; date.textContent = fmtTime(s.start, true);
+    var meta = document.createElement("span"); meta.className = "sessMeta"; meta.textContent = "约 " + mins + " 分钟 · " + s.records.length + " 句";
+    var arrow = document.createElement("span"); arrow.className = "sessArrow"; arrow.textContent = "展开 ▾";
+    top.appendChild(date); top.appendChild(meta); top.appendChild(arrow);
+
+    var body = document.createElement("div"); body.className = "sessBody"; body.hidden = true;
+    var sum = document.createElement("div"); sum.className = "sessSum";
+    sum.textContent = s.summary || "（这场没有生成 AI 要点）";
+    body.appendChild(sum);
+
+    var recs = document.createElement("div"); recs.className = "sessRec";
+    s.records.forEach(function (r) {
+      var row = document.createElement("div");
+      var en = document.createElement("div"); en.className = "en"; en.textContent = r.en;
+      var zh = document.createElement("div"); zh.className = "zh"; zh.textContent = r.zh || "（未翻译）";
+      row.appendChild(en); row.appendChild(zh);
+      recs.appendChild(row);
+    });
+    body.appendChild(recs);
+
+    var ops = document.createElement("div"); ops.className = "sessOps";
+    var exp = document.createElement("button"); exp.className = "miniBtn"; exp.type = "button"; exp.textContent = "导出这一场";
+    var del = document.createElement("button"); del.className = "miniBtn"; del.type = "button"; del.textContent = "删除";
+    ops.appendChild(exp); ops.appendChild(del);
+    body.appendChild(ops);
+
+    top.onclick = function () {
+      body.hidden = !body.hidden;
+      arrow.textContent = body.hidden ? "展开 ▾" : "收起 ▴";
+    };
+    exp.onclick = function (ev) { ev.stopPropagation(); exportSession(s); };
+    del.onclick = function (ev) {
+      ev.stopPropagation();
+      if (!confirm("删除这场会议记录？删除后无法恢复，建议先导出。")) return;
+      sessions = sessions.filter(function (x) { return x !== s; });
+      saveSessions(); renderHistory();
+    };
+
+    wrap.appendChild(top); wrap.appendChild(body);
+    box.appendChild(wrap);
+  });
+}
+$("historyBtn").onclick = function () {
+  renderHistory();
+  $("historyPanel").hidden = false;
+  document.body.style.overflow = "hidden";
+};
+$("histClose").onclick = function () {
+  $("historyPanel").hidden = true;
+  document.body.style.overflow = "";
+};
+/* 要点总结可折叠 */
+$("sumToggle").onclick = function () {
+  var t = $("summaryText");
+  t.hidden = !t.hidden;
+  this.textContent = t.hidden ? "展开" : "收起";
+};
 function renderLi(rec) {
   var li = document.createElement("li");
   var enEl = document.createElement("div"); enEl.className = "en"; enEl.textContent = rec.en;
@@ -525,8 +699,20 @@ $("exportBtn").onclick = function () {
   setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
 };
 $("clearBtn").onclick = function () {
-  if (!confirm("确定清空所有保存的记录？")) return;
-  records = []; saveLog(); $("list").innerHTML = "";
+  if (!confirm("确定清空当前页面的所有记录和要点总结？（会议记录里的历史不受影响）")) return;
+  records = []; saveLog();
+  summaryText = "";
+  $("summaryBox").hidden = true;
+  $("summaryText").hidden = false;
+  $("summaryText").textContent = "";
+  $("sumToggle").textContent = "收起";
+  $("list").innerHTML = "";
+  $("current").hidden = true;
+  $("current").textContent = "";
+  chars = 0;
+  $("counter").textContent = "";
+  sessionMark = 0; sessionStart = Date.now();   // 清空后这一场的起点也归零
+  scrollTo(0, 0);
 };
 
 function addFinal(en) {
@@ -665,6 +851,9 @@ $("mainBtn").onclick = function () {
     running = true; paused = false;
     summaryText = "";
     $("summaryBox").hidden = true;
+    $("summaryText").hidden = false;
+    $("sumToggle").textContent = "收起";
+    sessionStart = Date.now(); sessionMark = records.length;   // 这一场的起点
     $("pauseBtn").hidden = false;
     $("current").hidden = true;
     var b = $("mainBtn");
@@ -674,7 +863,7 @@ $("mainBtn").onclick = function () {
     startRec();
   } else {
     stopAll();
-    drainJobs().then(summarize);   // 等最后几句都翻完，再总结
+    drainJobs().then(summarize).then(archiveSession);   // 等翻完 → 总结 → 存档这场会议
   }
 };
 
