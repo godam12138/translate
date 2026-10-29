@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>课堂同传 · 英译中实时字幕</title>
+<style>
+  :root { --fs: 1; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #f5f6f7; color: #171717;
+    padding: 16px 16px 48px; max-width: 760px; margin: 0 auto;
+  }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  h1 { font-size: 20px; font-weight: 600; }
+  #status { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #52525b; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #9ca3af; }
+  .dot.on { background: #10b981; }
+
+  .warn {
+    background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+    border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.6; margin-bottom: 12px;
+  }
+
+  details {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  summary { font-size: 14px; font-weight: 600; cursor: pointer; }
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .row label { width: 72px; font-size: 13px; color: #52525b; flex-shrink: 0; }
+  .row select, .row input {
+    flex: 1; min-width: 0; font-size: 14px; padding: 8px 10px;
+    border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #171717;
+  }
+  .row button {
+    font-size: 14px; padding: 8px 14px; border: 1px solid #d1d5db;
+    border-radius: 8px; background: #fff; cursor: pointer;
+  }
+  #llmBox { border-top: 1px dashed #e5e7eb; margin-top: 10px; padding-top: 4px; }
+  .hint { font-size: 12px; color: #6b7280; line-height: 1.6; margin-top: 8px; }
+
+  #bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  #mainBtn {
+    flex: 1; font-size: 18px; font-weight: 600; padding: 14px 0;
+    border: none; border-radius: 12px; background: #10b981; color: #fff; cursor: pointer;
+  }
+  #mainBtn:disabled { background: #9ca3af; }
+  #mainBtn.stop { background: #ef4444; }
+  #counter { font-size: 12px; color: #6b7280; white-space: nowrap; }
+
+  #current {
+    font-size: calc(18px * var(--fs)); color: #9ca3af; font-style: italic;
+    padding: 2px 4px 6px; line-height: 1.5;
+  }
+  #list { list-style: none; }
+  #list li {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 10px; line-height: 1.55;
+  }
+  #list .en { font-size: calc(20px * var(--fs)); color: #111827; margin-bottom: 4px; }
+  #list .zh { font-size: calc(18px * var(--fs)); color: #2563eb; }
+  #list .zh.warn { color: #b45309; font-size: calc(14px * var(--fs)); }
+
+  .tips { font-size: 12px; color: #6b7280; line-height: 1.7; margin-top: 16px; }
+
+  @media (prefers-color-scheme: dark) {
+    body { background: #101012; color: #e5e7eb; }
+    details, #list li, .row select, .row input, .row button { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
+    #list .en { color: #f3f4f6; }
+    .warn { background: #2a1414; border-color: #5b2020; color: #fca5a5; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>课堂同传</h1>
+  <div id="status"><span class="dot"></span><span id="statusText">未开始</span></div>
+</header>
+
+<div id="supportWarn" class="warn" hidden>
+  当前浏览器不支持语音识别。<br />
+  iPad 请用 <b>Safari</b> 打开本页；安卓平板请用 <b>Edge</b> 试试；电脑请用 Edge 或 Chrome。
+</div>
+
+<details id="settingsBox" open>
+  <summary>设置</summary>
+  <div class="row">
+    <label>翻译引擎</label>
+    <select id="engine">
+      <option value="mymemory">MyMemory（免费，免注册）</option>
+      <option value="llm">大模型接口（质量更好，需 Key）</option>
+    </select>
+  </div>
+  <div id="llmBox" hidden>
+    <div class="row"><label>接口地址</label><input id="llmUrl" value="https://open.bigmodel.cn/api/paas/v4" /></div>
+    <div class="row"><label>API Key</label><input id="llmKey" type="password" placeholder="粘贴你的 Key，只保存在本机" /></div>
+    <div class="row"><label>模型名</label><input id="llmModel" value="glm-4-flash" /></div>
+    <p class="hint">免费推荐：智谱 glm-4-flash（注册就有免费额度）。DeepSeek（接口地址 https://api.deepseek.com，模型 deepseek-chat）也只要几毛钱一天。Key 只存你自己的设备上。</p>
+  </div>
+  <div class="row">
+    <label>中文朗读</label>
+    <select id="ttsSel">
+      <option value="off">关（推荐，不打断收音）</option>
+      <option value="on">开</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>字幕字号</label>
+    <button id="fontDown">A−</button>
+    <button id="fontUp">A＋</button>
+  </div>
+</details>
+
+<div id="bar">
+  <button id="mainBtn">开始翻译</button>
+  <span id="counter"></span>
+</div>
+
+<div id="current" hidden></div>
+<ul id="list"></ul>
+
+<p class="tips">
+  小贴士：坐在离老师近的位置收音更准；使用中不要锁屏、不要切走页面；老师说中文时识别会变乱属正常现象；
+  免费接口有每日字符限额，适合"跟不上时看一眼"；想整节课全覆盖，就在设置里换成大模型接口（很便宜）。
+</p>
+
+<script>
+"use strict";
+var $ = function (id) { return document.getElementById(id); };
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+var rec = null, running = false, chars = 0, fs = 1, lock = null;
+
+if (!SR) { $("supportWarn").hidden = false; $("mainBtn").disabled = true; }
+
+/* ---------- 设置读写 ---------- */
+function saveSettings() {
+  try {
+    localStorage.setItem("tongchuan", JSON.stringify({
+      engine: $("engine").value, url: $("llmUrl").value,
+      key: $("llmKey").value, model: $("llmModel").value, tts: $("ttsSel").value
+    }));
+  } catch (e) {}
+}
+function loadSettings() {
+  try {
+    var s = JSON.parse(localStorage.getItem("tongchuan") || "{}");
+    if (s.engine) $("engine").value = s.engine;
+    if (s.url) $("llmUrl").value = s.url;
+    if (s.key) $("llmKey").value = s.key;
+    if (s.model) $("llmModel").value = s.model;
+    if (s.tts) $("ttsSel").value = s.tts;
+  } catch (e) {}
+  $("llmBox").hidden = $("engine").value !== "llm";
+}
+loadSettings();
+$("engine").onchange = function () { $("llmBox").hidden = $("engine").value !== "llm"; saveSettings(); };
+$("llmUrl").onchange = saveSettings; $("llmKey").onchange = saveSettings;
+$("llmModel").onchange = saveSettings; $("ttsSel").onchange = saveSettings;
+
+$("fontUp").onclick = function () { fs = Math.min(1.8, fs + 0.15); document.documentElement.style.setProperty("--fs", fs); };
+$("fontDown").onclick = function () { fs = Math.max(0.7, fs - 0.15); document.documentElement.style.setProperty("--fs", fs); };
+
+/* ---------- 状态 ---------- */
+function setStatus(text, on) {
+  $("statusText").textContent = text;
+  document.querySelector(".dot").classList.toggle("on", !!on);
+}
+
+/* ---------- 中文朗读 ---------- */
+function speak(zh) {
+  if ($("ttsSel").value !== "on" || !("speechSynthesis" in window)) return;
+  var u = new SpeechSynthesisUtterance(zh);
+  u.lang = "zh-CN"; u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+
+/* ---------- 翻译 ---------- */
+function translate(text) {
+  if ($("engine").value === "mymemory") {
+    var url = "https://api.mymemory.translated.net/get?langpair=en|zh-CN&q=" + encodeURIComponent(text);
+    return fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.responseData || !d.responseData.translatedText) throw new Error("翻译接口无返回");
+      var t = d.responseData.translatedText;
+      if (/MYMEMORY WARNING/i.test(t)) throw new Error("今日免费额度用完，请在设置里换成大模型接口");
+      var el = document.createElement("div"); el.innerHTML = t;
+      return el.textContent;
+    });
+  }
+  var key = $("llmKey").value.trim();
+  if (!key) return Promise.reject(new Error("请先在设置里填入 API Key"));
+  var base = $("llmUrl").value.trim().replace(/\/+$/, "");
+  return fetch(base + "/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+    body: JSON.stringify({
+      model: $("llmModel").value.trim() || "glm-4-flash",
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: "你是课堂同声传译，把英文课堂内容翻译成简体中文。只输出译文，不要解释、不要任何前缀。专业术语第一次出现时在括号里保留英文原文。" },
+        { role: "user", content: text }
+      ]
+    })
+  }).then(function (r) {
+    if (!r.ok) throw new Error("接口返回 " + r.status + "，请检查 Key 和接口地址");
+    return r.json();
+  }).then(function (d) {
+    var out = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
+    if (!out) throw new Error("接口无译文");
+    return out.trim();
+  });
+}
+
+/* ---------- 字幕条目 ---------- */
+function scrollBottom() { window.scrollTo(0, document.body.scrollHeight); }
+function addFinal(en) {
+  var li = document.createElement("li");
+  var enEl = document.createElement("div"); enEl.className = "en"; enEl.textContent = en;
+  var zhEl = document.createElement("div"); zhEl.className = "zh"; zhEl.textContent = "翻译中…";
+  li.appendChild(enEl); li.appendChild(zhEl);
+  var list = $("list");
+  list.appendChild(li);
+  while (list.children.length > 40) list.removeChild(list.firstChild);
+  scrollBottom();
+  translate(en).then(function (t) { zhEl.textContent = t; speak(t); })
+    .catch(function (e) { zhEl.textContent = "⚠ " + e.message; zhEl.className = "zh warn"; })
+    .then(scrollBottom);
+  chars += en.length;
+  $("counter").textContent = "已翻译 " + chars + " 字符";
+}
+
+/* ---------- 语音识别（自动重启） ---------- */
+function startRec() {
+  rec = new SR();
+  rec.lang = "en-US";
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.onresult = function (e) {
+    var interim = "", finalTxt = "";
+    for (var i = e.resultIndex; i < e.results.length; i++) {
+      var r = e.results[i];
+      if (r.isFinal) finalTxt += r[0].transcript; else interim += r[0].transcript;
+    }
+    if (interim) {
+      var c = $("current"); c.hidden = false; c.textContent = interim;
+    }
+    if (finalTxt) {
+      $("current").hidden = true;
+      addFinal(finalTxt.trim());
+    }
+  };
+  rec.onerror = function (e) {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      stopAll(); setStatus("麦克风权限被拒绝，请在浏览器设置里允许", false);
+    } else if (e.error === "network") {
+      setStatus("识别服务网络异常，自动重试中…", false);
+    }
+  };
+  rec.onend = function () {
+    if (running) setTimeout(startRec, 300);   // 识别自动停了就重启，实现"连续同传"
+  };
+  try { rec.start(); } catch (e) {}
+}
+function stopAll() {
+  running = false;
+  if (rec) { try { rec.stop(); } catch (e) {} }
+  $("current").hidden = true;
+  var b = $("mainBtn");
+  b.textContent = "开始翻译"; b.classList.remove("stop");
+  setStatus("已停止", false);
+}
+
+/* ---------- 主按钮 ---------- */
+$("mainBtn").onclick = function () {
+  if (!SR) return;
+  if (!running) {
+    running = true;
+    var b = $("mainBtn");
+    b.textContent = "停止"; b.classList.add("stop");
+    setStatus("聆听中…", true);
+    keepAwake();
+    startRec();
+  } else {
+    stopAll();
+  }
+};
+
+/* ---------- 防休眠 ---------- */
+function keepAwake() {
+  if (navigator.wakeLock) {
+    navigator.wakeLock.request("screen").then(function (l) { lock = l; }).catch(function () {});
+  }
+}
+document.addEventListener("visibilitychange", function () {
+  if (running && document.visibilityState === "visible") keepAwake();
+});
+</script>
+</body>
+</html>
