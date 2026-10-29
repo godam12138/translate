@@ -49,10 +49,15 @@
   #mainBtn:disabled { background: #9ca3af; }
   #mainBtn.stop { background: #ef4444; }
   #counter { font-size: 12px; color: #6b7280; white-space: nowrap; }
+  #bar .miniBtn {
+    font-size: 13px; padding: 10px 12px; border: 1px solid #d1d5db;
+    border-radius: 10px; background: #fff; color: #171717; cursor: pointer;
+  }
 
   #current {
-    font-size: calc(18px * var(--fs)); color: #9ca3af; font-style: italic;
-    padding: 2px 4px 6px; line-height: 1.5;
+    background: #fff; border: 1px dashed #d1d5db; border-radius: 12px;
+    font-size: calc(18px * var(--fs)); color: #6b7280; font-style: italic;
+    padding: 12px 14px; line-height: 1.5; margin-bottom: 10px;
   }
   #list { list-style: none; }
   #list li {
@@ -67,7 +72,7 @@
 
   @media (prefers-color-scheme: dark) {
     body { background: #101012; color: #e5e7eb; }
-    details, #list li, .row select, .row input, .row button { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
+    details, #list li, .row select, .row input, .row button, #current, #bar .miniBtn { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
     #list .en { color: #f3f4f6; }
     .warn { background: #2a1414; border-color: #5b2020; color: #fca5a5; }
   }
@@ -93,11 +98,20 @@
       <option value="llm">大模型接口（质量更好，需 Key）</option>
     </select>
   </div>
+  <div class="row" id="mmBox">
+    <label>邮箱(可选)</label>
+    <input id="mmEmail" placeholder="填后免费额度 5千 → 5万字符/天" />
+  </div>
   <div id="llmBox" hidden>
-    <div class="row"><label>接口地址</label><input id="llmUrl" value="https://open.bigmodel.cn/api/paas/v4" /></div>
-    <div class="row"><label>API Key</label><input id="llmKey" type="password" placeholder="粘贴你的 Key，只保存在本机" /></div>
-    <div class="row"><label>模型名</label><input id="llmModel" value="glm-4-flash" /></div>
-    <p class="hint">免费推荐：智谱 glm-4-flash（注册就有免费额度）。DeepSeek（接口地址 https://api.deepseek.com，模型 deepseek-chat）也只要几毛钱一天。Key 只存你自己的设备上。</p>
+    <div class="row"><label>接口地址</label><input id="llmUrl" value="https://api.siliconflow.cn/v1" /></div>
+    <div class="row"><label>API Key</label><input id="llmKey" type="password" placeholder="粘贴 sk- 开头的 Key，只保存在本机" /></div>
+    <div class="row"><label>模型名</label><input id="llmModel" value="Qwen/Qwen3-8B" /></div>
+    <p class="hint">默认走硅基流动：<b>Qwen/Qwen3-8B 长期免费</b>，国内直连不用中转。注册 cloud.siliconflow.cn → 实名认证 → 「API 密钥」新建 → 把 sk- 开头的 Key 粘到上面即可。若这条免费模型频繁提示"请求太频繁"，可换成付费模型，约几毛钱一天。Key 只存在你自己的设备里。</p>
+    <div class="row">
+      <label></label>
+      <button id="testBtn">测试连接</button>
+      <span id="testOut" style="font-size:12px;color:#6b7280;flex:1;word-break:break-all;line-height:1.5"></span>
+    </div>
   </div>
   <div class="row">
     <label>中文朗读</label>
@@ -116,14 +130,16 @@
 <div id="bar">
   <button id="mainBtn">开始翻译</button>
   <span id="counter"></span>
+  <button id="exportBtn" class="miniBtn">导出</button>
+  <button id="clearBtn" class="miniBtn">清空</button>
 </div>
 
-<div id="current" hidden></div>
 <ul id="list"></ul>
+<div id="current" hidden></div>
 
 <p class="tips">
-  小贴士：坐在离老师近的位置收音更准；使用中不要锁屏、不要切走页面；老师说中文时识别会变乱属正常现象；
-  免费接口有每日字符限额，适合"跟不上时看一眼"；想整节课全覆盖，就在设置里换成大模型接口（很便宜）。
+  小贴士：坐在离老师近的位置收音更准；使用中不要锁屏、不要切走页面（iPad 可用分屏）；老师说中文时识别会变乱属正常现象；
+  默认的 MyMemory 有每日字符限额，适合"跟不上时看一眼"；要整节课全覆盖，就在设置里切换成大模型接口（硅基流动的 Qwen3-8B 长期免费）。
 </p>
 
 <script>
@@ -139,7 +155,8 @@ function saveSettings() {
   try {
     localStorage.setItem("tongchuan", JSON.stringify({
       engine: $("engine").value, url: $("llmUrl").value,
-      key: $("llmKey").value, model: $("llmModel").value, tts: $("ttsSel").value
+      key: $("llmKey").value, model: $("llmModel").value, tts: $("ttsSel").value,
+      mm: $("mmEmail").value
     }));
   } catch (e) {}
 }
@@ -147,17 +164,47 @@ function loadSettings() {
   try {
     var s = JSON.parse(localStorage.getItem("tongchuan") || "{}");
     if (s.engine) $("engine").value = s.engine;
-    if (s.url) $("llmUrl").value = s.url;
+    if (s.url) $("llmUrl").value = /bigmodel\.cn/.test(s.url) ? "https://api.siliconflow.cn/v1" : s.url;
     if (s.key) $("llmKey").value = s.key;
-    if (s.model) $("llmModel").value = s.model;
+    if (s.model && s.model !== "glm-4-flash") $("llmModel").value = s.model;
     if (s.tts) $("ttsSel").value = s.tts;
+    if (s.mm) $("mmEmail").value = s.mm;
   } catch (e) {}
-  $("llmBox").hidden = $("engine").value !== "llm";
+  updateEngineUI();
+}
+function updateEngineUI() {
+  var e = $("engine").value;
+  $("llmBox").hidden = e !== "llm";
+  $("mmBox").hidden = e !== "mymemory";
 }
 loadSettings();
-$("engine").onchange = function () { $("llmBox").hidden = $("engine").value !== "llm"; saveSettings(); };
+$("engine").onchange = function () { updateEngineUI(); saveSettings(); };
 $("llmUrl").onchange = saveSettings; $("llmKey").onchange = saveSettings;
+$("mmEmail").onchange = saveSettings;
 $("llmModel").onchange = saveSettings; $("ttsSel").onchange = saveSettings;
+
+/* ---------- 测试连接：把真实错误露出来，方便排查 ---------- */
+$("testBtn").onclick = function () {
+  var out = $("testOut");
+  var key = $("llmKey").value.trim();
+  var base = $("llmUrl").value.trim().replace(/\/+$/, "");
+  var model = $("llmModel").value.trim();
+  if (!key) { out.textContent = "还没填 API Key"; return; }
+  if (/\s/.test(key)) { out.textContent = "Key 里含空格或换行，请重新复制"; return; }
+  out.textContent = "测试中…（" + model + "）";
+  fetch(base + "/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+    body: JSON.stringify({ model: model, messages: [{ role: "user", content: "Reply with the single word: OK" }] })
+  }).then(function (r) {
+    return r.text().then(function (t) {
+      if (r.ok) out.textContent = "连接正常，模型回复：" + t.slice(0, 80);
+      else out.textContent = "接口返回 HTTP " + r.status + "：" + t.slice(0, 160);
+    });
+  }).catch(function (e) {
+    out.textContent = "请求没发出去（" + e.name + "）地址=" + base + " 详情=" + e.message;
+  });
+};
 
 $("fontUp").onclick = function () { fs = Math.min(1.8, fs + 0.15); document.documentElement.style.setProperty("--fs", fs); };
 $("fontDown").onclick = function () { fs = Math.max(0.7, fs - 0.15); document.documentElement.style.setProperty("--fs", fs); };
@@ -180,6 +227,8 @@ function speak(zh) {
 function translate(text) {
   if ($("engine").value === "mymemory") {
     var url = "https://api.mymemory.translated.net/get?langpair=en|zh-CN&q=" + encodeURIComponent(text);
+    var em = $("mmEmail").value.trim();
+    if (em) url += "&de=" + encodeURIComponent(em);
     return fetch(url).then(function (r) { return r.json(); }).then(function (d) {
       if (!d || !d.responseData || !d.responseData.translatedText) throw new Error("翻译接口无返回");
       var t = d.responseData.translatedText;
@@ -191,40 +240,132 @@ function translate(text) {
   var key = $("llmKey").value.trim();
   if (!key) return Promise.reject(new Error("请先在设置里填入 API Key"));
   var base = $("llmUrl").value.trim().replace(/\/+$/, "");
+  var model = $("llmModel").value.trim() || "Qwen/Qwen3-8B";
+  var body = {
+    model: model,
+    temperature: 0.2,
+    messages: [
+      { role: "system", content: "你是课堂同声传译，把英文课堂内容翻译成简体中文。只输出译文，不要解释、不要任何前缀。专业术语第一次出现时在括号里保留英文原文。" },
+      { role: "user", content: text }
+    ]
+  };
+  // Qwen3 默认会先"思考"再回答，翻译场景关掉它，快很多
+  if (/qwen3/i.test(model)) body.enable_thinking = false;
+  var ctrl = window.AbortController ? new AbortController() : null;
+  var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 30000);   // 30 秒没响应就放弃，避免整队列卡死
   return fetch(base + "/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
-    body: JSON.stringify({
-      model: $("llmModel").value.trim() || "glm-4-flash",
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: "你是课堂同声传译，把英文课堂内容翻译成简体中文。只输出译文，不要解释、不要任何前缀。专业术语第一次出现时在括号里保留英文原文。" },
-        { role: "user", content: text }
-      ]
-    })
+    body: JSON.stringify(body),
+    signal: ctrl ? ctrl.signal : undefined
   }).then(function (r) {
-    if (!r.ok) throw new Error("接口返回 " + r.status + "，请检查 Key 和接口地址");
+    clearTimeout(timer);
+    if (!r.ok) throw new Error(httpMsg(r.status));
     return r.json();
+  }, function (err) {
+    clearTimeout(timer);
+    if (err && err.name === "AbortError") throw new Error("请求超时，网络太慢");
+    throw new Error("连不上接口，检查网络或接口地址");
   }).then(function (d) {
     var out = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
     if (!out) throw new Error("接口无译文");
     return out.trim();
   });
 }
+function httpMsg(code) {
+  if (code === 401) return "Key 无效，请检查是否完整复制";
+  if (code === 402) return "余额不足，需要充值";
+  if (code === 403) return "无权限，可能未实名认证";
+  if (code === 400) return "模型名不对，请检查设置";
+  if (code === 429) return "请求太频繁，稍等";
+  return "接口返回 " + code;
+}
+/* 排队：一次只发一个翻译请求，防止课堂长时间使用把请求堆爆 */
+var chain = Promise.resolve(), qCount = 0;
+function translateQueued(text) {
+  if (qCount >= 8) return Promise.reject(new Error("排队太多，这行先跳过"));
+  qCount++;
+  var run = function () { return translateRetry(text); };
+  var p = chain.then(run, run);
+  chain = p.then(function () { qCount--; }, function () { qCount--; });
+  return p;
+}
+/* 限流或网络抖动时，等 1.8 秒重试一次 */
+function translateRetry(text) {
+  return translate(text).catch(function (e) {
+    if (!/频繁|超时|连不上/.test(e.message)) throw e;
+    return new Promise(function (res) { setTimeout(res, 1800); }).then(function () { return translate(text); });
+  });
+}
 
 /* ---------- 字幕条目 ---------- */
-function scrollBottom() { window.scrollTo(0, document.body.scrollHeight); }
-function addFinal(en) {
+function nearBottom() {
+  return (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 160);
+}
+function scrollBottom() { if (nearBottom()) window.scrollTo(0, document.body.scrollHeight); }
+
+/* 把零碎的识别片段拼成完整句子再翻译：上下文越长，翻译越准 */
+var pending = "", pendingTimer = null;
+function flushPending() {
+  if (!pending) return;
+  var s = pending; pending = "";
+  clearTimeout(pendingTimer); pendingTimer = null;
+  addFinal(s);
+}
+function pushFinal(t) {
+  pending = pending ? pending + " " + t : t;
+  // 够长、或句尾标点出现、或停顿 1.6 秒，就送去翻译
+  if (pending.length >= 60 || /[.!?]["'”)]?\s*$/.test(t)) { flushPending(); }
+  else {
+    clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(flushPending, 1600);
+  }
+}
+
+/* ---------- 记录保存与导出 ---------- */
+var logKey = "tongchuan_log", records = [];
+try { records = JSON.parse(localStorage.getItem(logKey) || "[]"); } catch (e) { records = []; }
+function saveLog() { try { localStorage.setItem(logKey, JSON.stringify(records.slice(-500))); } catch (e) {} }
+function renderLi(rec) {
   var li = document.createElement("li");
-  var enEl = document.createElement("div"); enEl.className = "en"; enEl.textContent = en;
-  var zhEl = document.createElement("div"); zhEl.className = "zh"; zhEl.textContent = "翻译中…";
+  var enEl = document.createElement("div"); enEl.className = "en"; enEl.textContent = rec.en;
+  var zhEl = document.createElement("div"); zhEl.className = "zh"; zhEl.textContent = rec.zh || "翻译中…";
   li.appendChild(enEl); li.appendChild(zhEl);
+  return { li: li, zhEl: zhEl };
+}
+function appendLi(v) {
   var list = $("list");
-  list.appendChild(li);
+  list.appendChild(v.li);
   while (list.children.length > 40) list.removeChild(list.firstChild);
+}
+/* 恢复上次保存的记录（最近 40 条） */
+records.slice(-40).forEach(function (r) { appendLi(renderLi(r)); });
+
+$("exportBtn").onclick = function () {
+  if (!records.length) { alert("还没有记录可导出"); return; }
+  var lines = records.map(function (r) {
+    var d = new Date(r.ts);
+    var t = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+    return "[" + t + "] " + r.en + "\n        " + (r.zh || "(未翻译)");
+  });
+  var blob = new Blob(["\ufeff" + lines.join("\n\n")], { type: "text/plain;charset=utf-8" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "同传记录.txt"; a.click();
+  URL.revokeObjectURL(a.href);
+};
+$("clearBtn").onclick = function () {
+  if (!confirm("确定清空所有保存的记录？")) return;
+  records = []; saveLog(); $("list").innerHTML = "";
+};
+
+function addFinal(en) {
+  var rec = { ts: Date.now(), en: en, zh: "" };
+  records.push(rec); saveLog();
+  var v = renderLi(rec);
+  appendLi(v);
   scrollBottom();
-  translate(en).then(function (t) { zhEl.textContent = t; speak(t); })
-    .catch(function (e) { zhEl.textContent = "⚠ " + e.message; zhEl.className = "zh warn"; })
+  translateQueued(en).then(function (t) { v.zhEl.textContent = t; rec.zh = t; saveLog(); speak(t); })
+    .catch(function (e) { v.zhEl.textContent = "⚠ " + e.message; v.zhEl.className = "zh warn"; saveLog(); })
     .then(scrollBottom);
   chars += en.length;
   $("counter").textContent = "已翻译 " + chars + " 字符";
@@ -243,11 +384,14 @@ function startRec() {
       if (r.isFinal) finalTxt += r[0].transcript; else interim += r[0].transcript;
     }
     if (interim) {
-      var c = $("current"); c.hidden = false; c.textContent = interim;
+      var c = $("current"); c.hidden = false; c.textContent = pending ? pending + " " + interim : interim;
+      scrollBottom();
     }
     if (finalTxt) {
-      $("current").hidden = true;
-      addFinal(finalTxt.trim());
+      finalTxt = finalTxt.trim();
+      if (finalTxt) pushFinal(finalTxt);
+      $("current").hidden = !pending;
+      if (pending) $("current").textContent = pending;
     }
   };
   rec.onerror = function (e) {
@@ -258,12 +402,13 @@ function startRec() {
     }
   };
   rec.onend = function () {
-    if (running) setTimeout(startRec, 300);   // 识别自动停了就重启，实现"连续同传"
+    if (running) { flushPending(); setTimeout(startRec, 300); }   // 识别自动停了就重启，实现"连续同传"
   };
   try { rec.start(); } catch (e) {}
 }
 function stopAll() {
   running = false;
+  flushPending();
   if (rec) { try { rec.stop(); } catch (e) {} }
   $("current").hidden = true;
   var b = $("mainBtn");
