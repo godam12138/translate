@@ -70,12 +70,22 @@
   #list .zh { font-size: calc(18px * var(--fs)); color: #2563eb; }
   #list .zh.warn { color: #b45309; font-size: calc(14px * var(--fs)); }
 
+  #pauseBtn { background: #fff7ed; border-color: #fdba74; color: #9a3412; }
+  #summaryBox {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  #summaryBox h3 { font-size: 14px; font-weight: 600; color: #2563eb; margin-bottom: 8px; }
+  #summaryText { font-size: 14px; line-height: 1.7; white-space: pre-wrap; color: #111827; }
+
   .tips { font-size: 12px; color: #6b7280; line-height: 1.7; margin-top: 16px; }
 
   @media (prefers-color-scheme: dark) {
     body { background: #101012; color: #e5e7eb; }
-    details, #list li, .row select, .row input, .row button, #current, #bar .miniBtn { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
+    details, #list li, .row select, .row input, .row button, #current, #bar .miniBtn, #summaryBox { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
     #list .en { color: #f3f4f6; }
+    #pauseBtn { background: #2a2114; border-color: #6b4a20; color: #fbbf24; }
+    #summaryText { color: #e5e7eb; }
     .warn { background: #2a1414; border-color: #5b2020; color: #fca5a5; }
   }
 </style>
@@ -134,9 +144,15 @@
 
 <div id="bar">
   <button id="mainBtn">开始翻译</button>
+  <button id="pauseBtn" class="miniBtn" hidden>暂停</button>
   <span id="counter"></span>
-  <button id="exportBtn" class="miniBtn">导出</button>
+  <button id="exportBtn" class="miniBtn">保存文件</button>
   <button id="clearBtn" class="miniBtn">清空</button>
+</div>
+
+<div id="summaryBox" hidden>
+  <h3>要点总结</h3>
+  <div id="summaryText"></div>
 </div>
 
 <ul id="list"></ul>
@@ -151,7 +167,8 @@
 "use strict";
 var $ = function (id) { return document.getElementById(id); };
 var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-var rec = null, running = false, chars = 0, fs = 1, lock = null;
+var rec = null, running = false, paused = false, chars = 0, fs = 1, lock = null;
+var summaryText = "";
 
 if (!SR) { $("supportWarn").hidden = false; $("mainBtn").disabled = true; }
 
@@ -395,17 +412,27 @@ function appendLi(v) {
 /* 恢复上次保存的记录（最近 40 条） */
 records.slice(-40).forEach(function (r) { appendLi(renderLi(r)); });
 
+/* 保存成一个文件：要点总结 + 完整中英记录 */
 $("exportBtn").onclick = function () {
-  if (!records.length) { alert("还没有记录可导出"); return; }
+  if (!records.length) { alert("还没有记录可保存"); return; }
+  var now = new Date();
+  var pad = function (n) { return ("0" + n).slice(-2); };
+  var head = "# 课堂记录 " + now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()) +
+             " " + pad(now.getHours()) + ":" + pad(now.getMinutes()) + "\n\n";
+  if (summaryText) head += "## 要点总结\n\n" + summaryText + "\n\n";
+  head += "## 完整记录（共 " + records.length + " 条）\n\n";
   var lines = records.map(function (r) {
     var d = new Date(r.ts);
-    var t = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
-    return "[" + t + "] " + r.en + "\n        " + (r.zh || "(未翻译)");
+    var t = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    return "**[" + t + "]** " + r.en + "\n\n> " + (r.zh || "（未翻译）") + "\n";
   });
-  var blob = new Blob(["\ufeff" + lines.join("\n\n")], { type: "text/plain;charset=utf-8" });
+  var md = head + lines.join("\n");
+  var blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
   var a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = "同传记录.txt"; a.click();
-  URL.revokeObjectURL(a.href);
+  a.href = URL.createObjectURL(blob);
+  a.download = "课堂记录_" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + ".md";
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
 };
 $("clearBtn").onclick = function () {
   if (!confirm("确定清空所有保存的记录？")) return;
@@ -427,6 +454,69 @@ function addFinal(en) {
     .then(scrollBottom);
   chars += en.length;
   $("counter").textContent = "已翻译 " + chars + " 字符";
+}
+
+/* ---------- AI 要点总结 ---------- */
+function callLLM(userContent, maxTokens) {
+  var key = $("llmKey").value.trim();
+  var base = $("llmUrl").value.trim().replace(/\/+$/, "");
+  var model = $("llmModel").value.trim() || "Qwen/Qwen3-8B";
+  if (!key) return Promise.reject(new Error("没填 API Key"));
+  var body = { model: model, temperature: 0.3, max_tokens: maxTokens || 400, messages: [{ role: "user", content: userContent }] };
+  if (/qwen3/i.test(model)) body.enable_thinking = false;
+  return fetch(base + "/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+    body: JSON.stringify(body)
+  }).then(function (r) {
+    return r.text().then(function (t) {
+      if (!r.ok) throw new Error(httpMsg(r.status));
+      var d = JSON.parse(t);
+      var out = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
+      if (!out) throw new Error("接口无内容");
+      return out.trim();
+    });
+  });
+}
+
+/* 结束后自动总结：记录太长就分段总结再合并 */
+function summarize() {
+  var box = $("summaryBox"), out = $("summaryText");
+  if (!records.length) return;
+  box.hidden = false;
+  if ($("engine").value === "mymemory" || !$("llmKey").value.trim()) {
+    out.textContent = "AI 总结需要先在设置里选「大模型接口」并填入 API Key。中文记录本身已经保存，可以直接点「保存文件」。";
+    return;
+  }
+  out.textContent = "正在整理要点…";
+  try { box.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {}
+
+  var lines = records.map(function (r) { return "- " + r.en + " / " + (r.zh || ""); });
+  var chunks = [], cur = "";
+  lines.forEach(function (l) {
+    if (cur.length + l.length > 4000) { chunks.push(cur); cur = ""; }
+    cur += l + "\n";
+  });
+  if (cur) chunks.push(cur);
+
+  var parts = [], p = Promise.resolve();
+  chunks.forEach(function (c, i) {
+    p = p.then(function () {
+      out.textContent = "正在整理要点…（" + (i + 1) + "/" + chunks.length + "）";
+      return callLLM("你是课堂笔记助手。下面是英文课堂的逐句记录（英文/中文对照）。请提炼中文要点，最多 6 条，每条一行以\"- \"开头，只输出要点。\n\n" + c, 300);
+    }).then(function (t) { parts.push(t); });
+  });
+
+  return p.then(function () {
+    if (chunks.length === 1) return parts[0];
+    out.textContent = "正在汇总要点…";
+    return callLLM("下面是同一堂课分段提炼的要点，请合并去重，整理成最多 10 条中文要点，每条一行以\"- \"开头，只输出要点。\n\n" + parts.join("\n"), 400);
+  }).then(function (t) {
+    summaryText = t;
+    out.textContent = t;
+  }).catch(function (e) {
+    out.textContent = "总结失败：" + e.message + "（记录仍然可以保存）";
+  });
 }
 
 /* ---------- 语音识别（自动重启） ---------- */
@@ -460,32 +550,58 @@ function startRec() {
     }
   };
   rec.onend = function () {
-    if (running) { flushPending(); setTimeout(startRec, 300); }   // 识别自动停了就重启，实现"连续同传"
+    // 识别自动停了就重启，实现"连续同传"；暂停时不重启
+    if (running && !paused) { flushPending(); setTimeout(function () { if (running && !paused) startRec(); }, 300); }
   };
   try { rec.start(); } catch (e) {}
 }
 function stopAll() {
   running = false;
+  paused = false;
   flushPending();
   if (rec) { try { rec.stop(); } catch (e) {} }
   $("current").hidden = true;
   var b = $("mainBtn");
   b.textContent = "开始翻译"; b.classList.remove("stop");
-  setStatus("已停止", false);
+  var p = $("pauseBtn");
+  p.hidden = true; p.textContent = "暂停";
+  setStatus("已结束", false);
 }
 
-/* ---------- 主按钮 ---------- */
+/* ---------- 主按钮 + 暂停按钮 ---------- */
 $("mainBtn").onclick = function () {
   if (!SR) return;
   if (!running) {
-    running = true;
+    running = true; paused = false;
+    summaryText = "";
+    $("summaryBox").hidden = true;
+    $("pauseBtn").hidden = false;
+    $("current").hidden = true;
     var b = $("mainBtn");
-    b.textContent = "停止"; b.classList.add("stop");
+    b.textContent = "结束"; b.classList.add("stop");
     setStatus("聆听中…", true);
     keepAwake();
     startRec();
   } else {
     stopAll();
+    setTimeout(summarize, 1200);   // 等最后几句翻完再总结
+  }
+};
+
+$("pauseBtn").onclick = function () {
+  if (!running) return;
+  if (!paused) {
+    paused = true;
+    flushPending();
+    if (rec) { try { rec.stop(); } catch (e) {} }
+    $("pauseBtn").textContent = "继续";
+    setStatus("已暂停（课间休息）", false);
+  } else {
+    paused = false;
+    $("pauseBtn").textContent = "暂停";
+    setStatus("聆听中…", true);
+    keepAwake();
+    startRec();
   }
 };
 
