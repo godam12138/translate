@@ -214,6 +214,15 @@
     <div class="row"><label>模型名</label><input id="llmModel" value="Qwen/Qwen3-8B" /></div>
   </details>
   <div class="row">
+    <label>识别语言</label>
+    <select id="recLang">
+      <option value="en-US">英语（美国，推荐）</option>
+      <option value="en-GB">英语（英国）</option>
+      <option value="en-CA">英语（加拿大）</option>
+      <option value="en-AU">英语（澳大利亚）</option>
+    </select>
+  </div>
+  <div class="row">
     <label>中文朗读</label>
     <select id="ttsSel">
       <option value="off">关（推荐，不打断收音）</option>
@@ -272,7 +281,7 @@ function saveSettings() {
     localStorage.setItem("tongchuan", JSON.stringify({
       engine: $("engine").value, url: $("llmUrl").value,
       key: $("llmKey").value, model: $("llmModel").value, tts: $("ttsSel").value,
-      mm: $("mmEmail").value
+      mm: $("mmEmail").value, reclang: $("recLang").value
     }));
   } catch (e) {}
 }
@@ -286,6 +295,7 @@ function loadSettings() {
     if (s.model && s.model !== "glm-4-flash") $("llmModel").value = s.model;
     if (s.tts) $("ttsSel").value = s.tts;
     if (s.mm) $("mmEmail").value = s.mm;
+    if (s.reclang) $("recLang").value = s.reclang;
   } catch (e) {}
   $("settingsPanel").hidden = !!s.key;   // 已经填过 Key 就默认收起设置，界面更干净
   $("gearBtn").classList.toggle("on", !$("settingsPanel").hidden);
@@ -298,7 +308,7 @@ function updateEngineUI() {
 }
 loadSettings();
 /* 边输入边保存：即便没点别处就关掉页面，配置也不会丢 */
-["mmEmail", "llmUrl", "llmKey", "llmModel", "ttsSel"].forEach(function (id) {
+["mmEmail", "llmUrl", "llmKey", "llmModel", "ttsSel", "recLang"].forEach(function (id) {
   $(id).oninput = saveSettings;
   $(id).onchange = saveSettings;
 });
@@ -715,7 +725,19 @@ $("clearBtn").onclick = function () {
   scrollTo(0, 0);
 };
 
+/* 识别后做一层轻量纠错：苹果识别器常把专业术语、缩写写错，改一下让翻译更准 */
+function fixRecognition(text) {
+  // 缩写全大写（识别器常把 HTTP、AI、GPU 等写成小写）
+  text = text.replace(/\b(html|http|https|css|js|sql|usb|api|ai|ml|dl|gpu|cpu|ram|rom|uav|rgb|png|jpg|pdf|c\+\+|java|python|matrix|gradient|kernel)\b/gi, function (m) { return m.toUpperCase(); });
+  // "C plus plus" → "C++"
+  text = text.replace(/\b[Cc]\s*(plus\s*plus|\+\s*\+|\+\+)\b/g, "C++");
+  // 句首字母大写
+  text = text.replace(/(?:^|[\.!?]\s+)([a-z])/g, function (m) { return m.toUpperCase(); });
+  return text;
+}
+
 function addFinal(en) {
+  en = fixRecognition(en);
   var rec = { ts: Date.now(), en: en, zh: "" };
   records.push(rec); saveLog();
   var v = renderLi(rec);
@@ -795,17 +817,36 @@ function summarize() {
   });
 }
 
-/* ---------- 语音识别（自动重启） ---------- */
+/* ---------- 语音识别（自动重启 + 多备选词择优） ---------- */
+function pickBestAlternative(result) {
+  /* 苹果识别器每个词有多个备选，默认取第一个。
+     选"最优"：优先更长、更像完整句子、标点结尾的那个，减少漏词和错词 */
+  var best = result[0].transcript.trim();
+  var bestLen = best.replace(/[\s.,!?;:]/g, "").length;
+  var endsSent = /[.!?]$/.test(best);
+  for (var i = 1; i < result.length; i++) {
+    var t = result[i].transcript.trim();
+    var tl = t.replace(/[\s.,!?;:]/g, "").length;
+    var te = /[.!?]$/.test(t);
+    // 更长 → 更准；同等长度下，有句尾标点说明识别器更确定
+    if (tl > bestLen + 2 || (tl >= bestLen && te && !endsSent)) {
+      best = t; bestLen = tl; endsSent = te;
+    }
+  }
+  return best;
+}
 function startRec() {
   rec = new SR();
-  rec.lang = "en-US";
+  rec.lang = $("recLang") ? $("recLang").value : "en-US";
   rec.continuous = true;
   rec.interimResults = true;
+  rec.maxAlternatives = 3;   // 要 3 个备选词，择优取更准的那个
   rec.onresult = function (e) {
     var interim = "", finalTxt = "";
     for (var i = e.resultIndex; i < e.results.length; i++) {
       var r = e.results[i];
-      if (r.isFinal) finalTxt += r[0].transcript; else interim += r[0].transcript;
+      var t = r.isFinal ? pickBestAlternative(r) : r[0].transcript;
+      if (r.isFinal) finalTxt += t + " "; else interim += t;
     }
     if (interim) {
       var c = $("current"); c.hidden = false; c.textContent = pending ? pending + " " + interim : interim;
@@ -826,7 +867,6 @@ function startRec() {
     }
   };
   rec.onend = function () {
-    // 识别自动停了就重启，实现"连续同传"；暂停时不重启
     if (running && !paused) { flushPending(); setTimeout(function () { if (running && !paused) startRec(); }, 300); }
   };
   try { rec.start(); } catch (e) {}
