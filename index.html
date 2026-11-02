@@ -961,8 +961,14 @@ async function xfStartSession() {
       }
     } catch (e) {}
   };
-  xfRec.ws.onerror = function () { setStatus("讯飞 WebSocket 错误，自动重连…", false); };
-  xfRec.ws.onclose = function () {
+  xfRec.ws.onerror = function (ev) {
+    var rs = xfRec.ws.readyState;
+    setStatus("讯飞 WebSocket 错误（readyState=" + rs + "，" + (rs === 0 ? "连接中被拦/网络不通" : rs === 1 ? "已连上后断开" : "未连接") + "），自动重连…", false);
+  };
+  xfRec.ws.onclose = function (ev) {
+    var code = ev.code || 0;
+    var reason = ev.reason || "";
+    setStatus("讯飞连接关闭 code=" + code + (reason ? " reason=" + reason : "") + "，自动重连…", false);
     if (!running || paused) return;
     // 55 秒到了或服务端断开 → 自动重连
     if (Date.now() - xfRec.startedAt > 50000) {
