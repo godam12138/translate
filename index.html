@@ -939,7 +939,7 @@ function xfHttpOnAudio(e) {
 
 async function xfHttpFlushChunk() {
   if (!xfHttp.running) return;
-  if (xfHttp.chunkBuf && xfHttp.chunkBuf.byteLength > 3200) {  // > 100ms 才发
+  if (xfHttp.chunkBuf && xfHttp.chunkBuf.byteLength > 3200) {
     var audioBytes = new Uint8Array(xfHttp.chunkBuf);
     var bin = "";
     for (var i = 0; i < audioBytes.length; i++) bin += String.fromCharCode(audioBytes[i]);
@@ -973,18 +973,25 @@ async function xfHttpFlushChunk() {
       });
       var body = await resp.json();
       if (body.code === 0 && body.data) {
-        // data 是带逗号分隔的多段结果
         var parts = body.data.split(",");
         var text = parts.map(function (p) {
           try { return JSON.parse(p).text || ""; } catch (e) { return ""; }
         }).join("");
         text = text.trim();
         if (text) pushFinal(text);
-      } else if (body.code && body.code !== "0") {
-        console.log("讯飞 HTTP 错误:", body.code, body.desc);
+      } else if (body.code) {
+        // HTTP API 已经下架或服务类型不对，回退苹果
+        console.log("讯飞 HTTP 模式不可用:", body.code, body.desc);
+        xfHttpStop();
+        if (running && !paused) asrStartAll();
+        return;
       }
     } catch (e) {
-      console.log("讯飞 HTTP 异常:", e.message);
+      // CORS 或网络错误，回退苹果
+      console.log("讯飞 HTTP 模式失败，回退苹果:", e.message);
+      xfHttpStop();
+      if (running && !paused) asrStartAll();
+      return;
     }
   }
   setTimeout(xfHttpFlushChunk, xfHttp.paused ? 60000 : 6000);
@@ -1211,83 +1218,79 @@ function stopAll() {
 }
 
 /* ---------- 苹果自带识别（讯飞回退方案） ---------- */
-/* 深度优化：长静音阈值、候选词择优、自动重连 */
+/* 深度优化：interim 也显示、候选词择优、自动重连 */
 function asrStartAll() {
   try {
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { setStatus("苹果识别不可用", false); stopAll(); return; }
+    if (!SR) { setStatus("苹果识别不可用（需要 iOS 14.5+）", false); stopAll(); return; }
 
     asrRec = new SR();
     var s = {};
     try { s = JSON.parse(localStorage.getItem("tongchuan") || "{}"); } catch (e) {}
-    asrRec.lang = (s.xfLang || "en_us").replace(/_/g, "-");  // en_us → en-US
+    asrRec.lang = (s.xfLang || "en_us").replace(/_/g, "-");
     asrRec.continuous = true;
     asrRec.interimResults = true;
-    asrRec.maxAlternatives = 5;  // 要 5 个备选，择优取最长最完整的
+    asrRec.maxAlternatives = 5;
 
     var lastResultTime = Date.now();
     asrAlternatives = [];
+    var pendingInterim = "";  // 累积的临时结果
 
     asrRec.onstart = function () { setStatus("聆听中（苹果识别）…", true); };
 
     asrRec.onresult = function (ev) {
       lastResultTime = Date.now();
       var interim = "", finalText = "";
-      var candidates = [];
 
       for (var i = ev.resultIndex; i < ev.results.length; i++) {
         var res = ev.results[i];
-        // 收集所有候选词
-        for (var a = 0; a < res.length; a++) {
-          var alt = res[a].transcript.trim();
-          if (alt.length > 2) candidates.push(alt);
-        }
+        var text = res[0].transcript.trim();
+
         if (res.isFinal) {
-          // 候选词择优：选最长、包含标点、句尾是字母数字的
-          var best = candidates[0] || res[0].transcript;
-          for (var c = 0; c < candidates.length; c++) {
-            if (candidates[c].length > best.length + 2 ||
-                (candidates[c].length >= best.length && /[.!?,.]$/.test(candidates[c]))) {
-              best = candidates[c];
-            }
-          }
-          finalText = best;
+          finalText = text;
+          pendingInterim = "";
         } else {
-          interim = res[0].transcript;
+          interim += text;
         }
       }
 
+      // 策略：final 直接提交；interim 累积到 pendingInterim，每次变化都更新预览
       if (finalText) {
         finalText = finalText.trim();
-        if (finalText) pushFinal(finalText);
+        if (finalText.length > 1) pushFinal(finalText);
+        var c = $("current"); c.hidden = true;
+      } else if (interim) {
+        // interim 结果显示在虚线框里（实时预览）
+        pendingInterim += " " + interim;
+        pendingInterim = pendingInterim.trim();
+        var c2 = $("current");
+        c2.hidden = false;
+        c2.textContent = pendingInterim;
       }
-      // 实时预览
-      var c = $("current");
-      if (interim) { c.hidden = false; c.textContent = interim; }
-      else c.hidden = true;
       scrollBottom();
     };
 
     asrRec.onerror = function (ev) {
       console.log("苹果识别错误:", ev.error);
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
-        setStatus("麦克风权限被拒绝", false); stopAll(); return;
+        setStatus("麦克风权限被拒绝，请在 iPad 设置里允许 Safari 使用麦克风", false); stopAll(); return;
       }
-      if (ev.error === "no-speech") {
-        // 静音超时，自动重连
+      if (ev.error === "no-speech" || ev.error === "aborted") {
         if (running && !paused) {
-          setTimeout(function () { if (running && !paused) { asrRec && asrRec.start(); } }, 500);
+          setTimeout(function () {
+            if (running && !paused) { try { asrRec.start(); } catch(e) {} }
+          }, 300);
         }
       }
     };
 
     asrRec.onend = function () {
-      // 自动重连：讯飞会话式识别每段结束都会触发 onend
       if (running && !paused) {
         var sinceLast = Date.now() - lastResultTime;
-        // 如果最近 2 秒内有结果，说明说话中，重连
-        if (sinceLast < 4000) {
-          setTimeout(function () { if (running && !paused) { asrRec && asrRec.start(); } }, 200);
+        if (sinceLast < 5000) {
+          setTimeout(function () {
+            if (running && !paused) { try { asrRec.start(); } catch(e) {} }
+          }, 100);
         }
       }
     };
