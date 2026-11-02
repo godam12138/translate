@@ -275,10 +275,40 @@ var summaryText = "";
 /* 讯飞识别全局变量 */
 var xfRec = { ws: null, ctx: null, source: null, node: null, stream: null, pcBuf: null, startedAt: 0, interimText: "", sessionId: 0 };
 
+/* 苹果自带识别全局变量（讯飞连不上时自动回退） */
+var asrRec = null;
+var asrAlternatives = [];  // 累积所有候选词，用于择优
+
 function hasXunfei() {
   var s = {};
   try { s = JSON.parse(localStorage.getItem("tongchuan") || "{}"); } catch (e) {}
   return !!(s.xfAppid && s.xfKey && s.xfSecret);
+}
+
+/* 主识别引擎：讯飞优先，没密钥自动用苹果自带识别 */
+function startRecognition() {
+  if (hasXunfei()) {
+    setStatus("启动讯飞识别…", true);
+    xfStartAll();
+  } else if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+    setStatus("启动苹果识别（回退模式）…", true);
+    asrStartAll();
+  } else {
+    stopAll();
+    setStatus("当前浏览器不支持语音识别", false);
+  }
+}
+function stopRecognition() {
+  if (hasXunfei()) xfStopAll();
+  else asrStopAll();
+}
+function pauseRecognition() {
+  if (hasXunfei()) xfStopSession(false);
+  else asrStopAll();
+}
+function resumeRecognition() {
+  if (hasXunfei()) xfStartSession();
+  else asrStartAll();
 }
 
 /* ---------- 设置读写 ---------- */
@@ -963,12 +993,20 @@ async function xfStartSession() {
   };
   xfRec.ws.onerror = function (ev) {
     var rs = xfRec.ws.readyState;
-    setStatus("讯飞 WebSocket 错误（readyState=" + rs + "，" + (rs === 0 ? "连接中被拦/网络不通" : rs === 1 ? "已连上后断开" : "未连接") + "），自动重连…", false);
+    setStatus("讯飞 WebSocket 错误，尝试回退到苹果识别…", false);
+    xfStopAll();
+    if (running && !paused) asrStartAll();
   };
   xfRec.ws.onclose = function (ev) {
     var code = ev.code || 0;
     var reason = ev.reason || "";
-    setStatus("讯飞连接关闭 code=" + code + (reason ? " reason=" + reason : "") + "，自动重连…", false);
+    if (code === 1006 && Date.now() - xfRec.startedAt < 3000) {
+      // 连接刚建立就断（401 签名错），直接回退苹果识别
+      setStatus("讯飞鉴权失败，回退到苹果识别", false);
+      xfStopAll();
+      if (running && !paused) asrStartAll();
+      return;
+    }
     if (!running || paused) return;
     // 55 秒到了或服务端断开 → 自动重连
     if (Date.now() - xfRec.startedAt > 50000) {
@@ -1027,7 +1065,7 @@ function xfStopAll() {
 function stopAll() {
   running = false; paused = false;
   flushPending();
-  xfStopAll();
+  stopRecognition();
   $("current").hidden = true;
   var b = $("mainBtn");
   b.textContent = "开始翻译"; b.classList.remove("stop");
@@ -1036,13 +1074,104 @@ function stopAll() {
   setStatus("已结束", false);
 }
 
+/* ---------- 苹果自带识别（讯飞回退方案） ---------- */
+/* 深度优化：长静音阈值、候选词择优、自动重连 */
+function asrStartAll() {
+  try {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setStatus("苹果识别不可用", false); stopAll(); return; }
+
+    asrRec = new SR();
+    var s = {};
+    try { s = JSON.parse(localStorage.getItem("tongchuan") || "{}"); } catch (e) {}
+    asrRec.lang = (s.xfLang || "en_us").replace(/_/g, "-");  // en_us → en-US
+    asrRec.continuous = true;
+    asrRec.interimResults = true;
+    asrRec.maxAlternatives = 5;  // 要 5 个备选，择优取最长最完整的
+
+    var lastResultTime = Date.now();
+    asrAlternatives = [];
+
+    asrRec.onstart = function () { setStatus("聆听中（苹果识别）…", true); };
+
+    asrRec.onresult = function (ev) {
+      lastResultTime = Date.now();
+      var interim = "", finalText = "";
+      var candidates = [];
+
+      for (var i = ev.resultIndex; i < ev.results.length; i++) {
+        var res = ev.results[i];
+        // 收集所有候选词
+        for (var a = 0; a < res.length; a++) {
+          var alt = res[a].transcript.trim();
+          if (alt.length > 2) candidates.push(alt);
+        }
+        if (res.isFinal) {
+          // 候选词择优：选最长、包含标点、句尾是字母数字的
+          var best = candidates[0] || res[0].transcript;
+          for (var c = 0; c < candidates.length; c++) {
+            if (candidates[c].length > best.length + 2 ||
+                (candidates[c].length >= best.length && /[.!?,.]$/.test(candidates[c]))) {
+              best = candidates[c];
+            }
+          }
+          finalText = best;
+        } else {
+          interim = res[0].transcript;
+        }
+      }
+
+      if (finalText) {
+        finalText = finalText.trim();
+        if (finalText) pushFinal(finalText);
+      }
+      // 实时预览
+      var c = $("current");
+      if (interim) { c.hidden = false; c.textContent = interim; }
+      else c.hidden = true;
+      scrollBottom();
+    };
+
+    asrRec.onerror = function (ev) {
+      console.log("苹果识别错误:", ev.error);
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+        setStatus("麦克风权限被拒绝", false); stopAll(); return;
+      }
+      if (ev.error === "no-speech") {
+        // 静音超时，自动重连
+        if (running && !paused) {
+          setTimeout(function () { if (running && !paused) { asrRec && asrRec.start(); } }, 500);
+        }
+      }
+    };
+
+    asrRec.onend = function () {
+      // 自动重连：讯飞会话式识别每段结束都会触发 onend
+      if (running && !paused) {
+        var sinceLast = Date.now() - lastResultTime;
+        // 如果最近 2 秒内有结果，说明说话中，重连
+        if (sinceLast < 4000) {
+          setTimeout(function () { if (running && !paused) { asrRec && asrRec.start(); } }, 200);
+        }
+      }
+    };
+
+    asrRec.start();
+  } catch (e) {
+    setStatus("苹果识别启动失败：" + e.message, false);
+    stopAll();
+  }
+}
+
+function asrStopAll() {
+  try { asrRec && asrRec.stop(); } catch (e) {}
+  try { asrRec && asrRec.abort(); } catch (e) {}
+  asrRec = null;
+  $("current").hidden = true;
+}
+
 /* ---------- 主按钮 + 暂停按钮 ---------- */
 $("mainBtn").onclick = function () {
-  if (!hasXunfei()) {
-    setStatus("请先到设置面板填写讯飞 AppID / APIKey / APISecret", false);
-    $("gearBtn").click();   // 自动弹出设置
-    return;
-  }
   if (!running) {
     running = true; paused = false;
     summaryText = "";
@@ -1056,7 +1185,7 @@ $("mainBtn").onclick = function () {
     b.textContent = "结束"; b.classList.add("stop");
     setStatus("聆听中…", true);
     keepAwake();
-    xfStartAll();
+    startRecognition();
   } else {
     stopAll();
     drainJobs().then(summarize).then(archiveSession);
@@ -1068,7 +1197,7 @@ $("pauseBtn").onclick = function () {
   if (!paused) {
     paused = true;
     flushPending();
-    xfStopSession(false);
+    pauseRecognition();
     $("pauseBtn").textContent = "继续";
     setStatus("已暂停（课间休息）", false);
   } else {
@@ -1076,7 +1205,7 @@ $("pauseBtn").onclick = function () {
     $("pauseBtn").textContent = "暂停";
     setStatus("聆听中…", true);
     keepAwake();
-    xfStartSession();
+    resumeRecognition();
   }
 };
 
