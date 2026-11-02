@@ -175,16 +175,12 @@
   </button>
 </header>
 
-<div id="supportWarn" class="warn" hidden>
-  当前浏览器不支持语音识别。<br />
-  iPad 请用 <b>Safari</b> 打开本页；安卓平板请用 <b>Edge</b> 试试；电脑请用 Edge 或 Chrome。
-</div>
-
 <div id="helpPanel" hidden>
-  <p>坐在离老师近的位置收音更准；使用中不要锁屏、不要切走页面（iPad 可以开分屏一边记笔记）。</p>
-  <p>老师说中文时识别会变乱，属正常现象；专业术语翻得生硬也正常，免费小模型的能力上限就在这。</p>
-  <p>一整天的课建议下课后点一次「保存文件」，浏览器本地只保留最近 500 条。</p>
-  <p>课间休息记得点「暂停」，暂停期间不会收音、不会记入课间闲聊，但已识别的内容会继续翻译完。</p>
+  <p><b>第一次用：</b>先点齿轮 → 展开「语音识别（讯飞）」→ 填 AppID / APIKey / APISecret（注册 xfyun.cn 控制台创建「语音听写流式版」应用即可拿到）</p>
+  <p><b>收音技巧：</b>iPad 平放桌面、麦克风朝下对着老师；离老师 5 米内；iPad 音量静音（外放声音会被麦克风收回来干扰识别）</p>
+  <p><b>上课流程：</b>开始 → 课间点暂停 → 结束自动生成 AI 要点总结 → 会议记录面板里看历史、导出或删除</p>
+  <p><b>保存建议：</b>浏览器本地只保留最近 500 条，重要的课下课后点「保存文件」或去「会议记录」导出那一场</p>
+  <p><b>讯飞额度：</b>每日 500 次免费（约 1 小时 20 分钟连续使用），超了约 0.2 元/千次，一学期花几块钱</p>
 </div>
 
 <div id="settingsPanel" hidden>
@@ -213,15 +209,20 @@
     <div class="row"><label>接口地址</label><input id="llmUrl" value="https://api.siliconflow.cn/v1" /></div>
     <div class="row"><label>模型名</label><input id="llmModel" value="Qwen/Qwen3-8B" /></div>
   </details>
-  <div class="row">
-    <label>识别语言</label>
-    <select id="recLang">
-      <option value="en-US">英语（美国，推荐）</option>
-      <option value="en-GB">英语（英国）</option>
-      <option value="en-CA">英语（加拿大）</option>
-      <option value="en-AU">英语（澳大利亚）</option>
-    </select>
-  </div>
+  <details id="sttBox">
+    <summary>语音识别（讯飞，推荐）</summary>
+    <p class="hint">iPad Safari 自带识别准确率低，讯飞是专业引擎（豆包同源）。注册 xfyun.cn 创建「语音听写（流式版）」应用后拿到 AppID / APIKey / APISecret。每日 500 次免费，超了 0.0002 元/次。</p>
+    <div class="row"><label>AppID</label><input id="xfAppid" placeholder="讯飞控制台 → 语音听写 → AppID" /></div>
+    <div class="row"><label>APIKey</label><input id="xfKey" placeholder="32 位字符串" /></div>
+    <div class="row"><label>APISecret</label><input id="xfSecret" placeholder="32 位字符串" /></div>
+    <div class="row">
+      <label>识别语种</label>
+      <select id="xfLang">
+        <option value="en_us">英语（推荐）</option>
+        <option value="zh_cn">中文</option>
+      </select>
+    </div>
+  </details>
   <div class="row">
     <label>中文朗读</label>
     <select id="ttsSel">
@@ -269,11 +270,16 @@
 <script>
 "use strict";
 var $ = function (id) { return document.getElementById(id); };
-var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-var rec = null, running = false, paused = false, chars = 0, fs = 1, lock = null;
+var running = false, paused = false, chars = 0, fs = 1, lock = null;
 var summaryText = "";
+/* 讯飞识别全局变量 */
+var xfRec = { ws: null, ctx: null, source: null, node: null, stream: null, pcBuf: null, startedAt: 0, interimText: "", sessionId: 0 };
 
-if (!SR) { $("supportWarn").hidden = false; $("mainBtn").disabled = true; }
+function hasXunfei() {
+  var s = {};
+  try { s = JSON.parse(localStorage.getItem("tongchuan") || "{}"); } catch (e) {}
+  return !!(s.xfAppid && s.xfKey && s.xfSecret);
+}
 
 /* ---------- 设置读写 ---------- */
 function saveSettings() {
@@ -281,7 +287,8 @@ function saveSettings() {
     localStorage.setItem("tongchuan", JSON.stringify({
       engine: $("engine").value, url: $("llmUrl").value,
       key: $("llmKey").value, model: $("llmModel").value, tts: $("ttsSel").value,
-      mm: $("mmEmail").value, reclang: $("recLang").value
+      mm: $("mmEmail").value, xfAppid: $("xfAppid").value, xfKey: $("xfKey").value,
+      xfSecret: $("xfSecret").value, xfLang: $("xfLang").value
     }));
   } catch (e) {}
 }
@@ -295,7 +302,10 @@ function loadSettings() {
     if (s.model && s.model !== "glm-4-flash") $("llmModel").value = s.model;
     if (s.tts) $("ttsSel").value = s.tts;
     if (s.mm) $("mmEmail").value = s.mm;
-    if (s.reclang) $("recLang").value = s.reclang;
+    if (s.xfAppid) $("xfAppid").value = s.xfAppid;
+    if (s.xfKey) $("xfKey").value = s.xfKey;
+    if (s.xfSecret) $("xfSecret").value = s.xfSecret;
+    if (s.xfLang) $("xfLang").value = s.xfLang;
   } catch (e) {}
   $("settingsPanel").hidden = !!s.key;   // 已经填过 Key 就默认收起设置，界面更干净
   $("gearBtn").classList.toggle("on", !$("settingsPanel").hidden);
@@ -308,7 +318,7 @@ function updateEngineUI() {
 }
 loadSettings();
 /* 边输入边保存：即便没点别处就关掉页面，配置也不会丢 */
-["mmEmail", "llmUrl", "llmKey", "llmModel", "ttsSel", "recLang"].forEach(function (id) {
+["mmEmail", "llmUrl", "llmKey", "llmModel", "ttsSel", "xfAppid", "xfKey", "xfSecret", "xfLang"].forEach(function (id) {
   $(id).oninput = saveSettings;
   $(id).onchange = saveSettings;
 });
@@ -725,7 +735,7 @@ $("clearBtn").onclick = function () {
   scrollTo(0, 0);
 };
 
-/* 识别后做一层轻量纠错：苹果识别器常把专业术语、缩写写错，改一下让翻译更准 */
+/* 识别后做一层轻量纠错：把识别器可能写歪的缩写、术语修正，翻译更准 */
 function fixRecognition(text) {
   // 缩写全大写（识别器常把 HTTP、AI、GPU 等写成小写）
   text = text.replace(/\b(html|http|https|css|js|sql|usb|api|ai|ml|dl|gpu|cpu|ram|rom|uav|rgb|png|jpg|pdf|c\+\+|java|python|matrix|gradient|kernel)\b/gi, function (m) { return m.toUpperCase(); });
@@ -817,65 +827,200 @@ function summarize() {
   });
 }
 
-/* ---------- 语音识别（自动重启 + 多备选词择优） ---------- */
-function pickBestAlternative(result) {
-  /* 苹果识别器每个词有多个备选，默认取第一个。
-     选"最优"：优先更长、更像完整句子、标点结尾的那个，减少漏词和错词 */
-  var best = result[0].transcript.trim();
-  var bestLen = best.replace(/[\s.,!?;:]/g, "").length;
-  var endsSent = /[.!?]$/.test(best);
-  for (var i = 1; i < result.length; i++) {
-    var t = result[i].transcript.trim();
-    var tl = t.replace(/[\s.,!?;:]/g, "").length;
-    var te = /[.!?]$/.test(t);
-    // 更长 → 更准；同等长度下，有句尾标点说明识别器更确定
-    if (tl > bestLen + 2 || (tl >= bestLen && te && !endsSent)) {
-      best = t; bestLen = tl; endsSent = te;
+/* ---------- 讯飞语音听写 WebSocket 实现 ---------- */
+
+/* RFC1123 格式日期（GMT） */
+function rfc1123Date() {
+  var w = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var d = new Date();
+  return w[d.getUTCDay()] + ", " + pad(d.getUTCDate()) + " " + m[d.getUTCMonth()] + " " + d.getUTCFullYear() + " " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds()) + " GMT";
+}
+function pad(n) { return n < 10 ? "0" + n : "" + n; }
+
+/* HMAC-SHA256 + Base64（Web Crypto API，支持所有现代浏览器） */
+async function hmacSha256(key, data) {
+  var enc = new TextEncoder();
+  var cryptoKey = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  var sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(data));
+  return arrayBufferToBase64(sig);
+}
+function arrayBufferToBase64(buf) {
+  var bytes = new Uint8Array(buf), bin = "";
+  for (var i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+/* 组装签名后的 WebSocket URL */
+async function xfSignedUrl(host, path, apiKey, apiSecret) {
+  var date = rfc1123Date();
+  var origin = "host: " + host + "\ndate: " + date + "\nGET " + path + " HTTP/1.1";
+  var signature = await hmacSha256(apiSecret, origin);
+  var authOrigin = 'api_key="' + apiKey + '", algorithm="hmac-sha256", headers="host date request-line", signature="' + signature + '"';
+  var authorization = btoa(authOrigin);
+  var params = "authorization=" + encodeURIComponent(authorization) + "&date=" + encodeURIComponent(date) + "&host=" + encodeURIComponent(host);
+  return "wss://" + host + path + "?" + params;
+}
+
+/* Float32 PCM → Int16 PCM */
+function floatToInt16(float32) {
+  var buf = new ArrayBuffer(float32.length * 2);
+  var view = new DataView(buf);
+  for (var i = 0; i < float32.length; i++) {
+    var s = Math.max(-1, Math.min(1, float32[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return buf;
+}
+
+/* 16k 采样的原始缓冲区，累积后一次性发 1280 字节（160ms 音频） */
+function xfSendAudioChunk() {
+  if (!xfRec.ws || xfRec.ws.readyState !== 1) return;
+  if (xfRec.pcBuf && xfRec.pcBuf.byteLength >= 1280) {
+    var chunk = new Int16Array(xfRec.pcBuf.slice(0, 1280));
+    xfRec.pcBuf = xfRec.pcBuf.slice(1280);
+    xfRec.ws.send(chunk.buffer);
+  }
+}
+
+/* Web Audio 处理回调：44100Hz → 16000Hz 下采样，存到 Int16 缓冲区 */
+function xfAudioProcess(e) {
+  if (!running || paused) return;
+  var input = e.inputBuffer.getChannelData(0);
+  var origRate = e.inputBuffer.sampleRate;
+  var targetRate = 16000;
+  var ratio = origRate / targetRate;
+  var outLen = Math.round(input.length / ratio);
+  var out = new Float32Array(outLen);
+  for (var i = 0; i < outLen; i++) out[i] = input[Math.floor(i * ratio)];
+  var pcm = floatToInt16(out);
+  if (xfRec.pcBuf) {
+    var merged = new Int16Array(xfRec.pcBuf.byteLength / 2 + pcm.byteLength / 2);
+    merged.set(new Int16Array(xfRec.pcBuf), 0);
+    merged.set(new Int16Array(pcm), xfRec.pcBuf.byteLength / 2);
+    xfRec.pcBuf = merged.buffer;
+  } else {
+    xfRec.pcBuf = pcm;
+  }
+  xfSendAudioChunk();
+}
+
+/* 启动一轮讯飞会话（每 55 秒自动重连一次，绕过 60 秒上限） */
+async function xfStartSession() {
+  if (!hasXunfei()) {
+    setStatus("未配置讯飞密钥，请在设置面板填写 AppID/APIKey/APISecret", false);
+    running = false; $("mainBtn").textContent = "开始翻译"; $("pauseBtn").hidden = true;
+    return;
+  }
+  var s = JSON.parse(localStorage.getItem("tongchuan"));
+  var host = "iat-api.xfyun.cn", path = "/v2/iat";
+  var url = await xfSignedUrl(host, path, s.xfKey, s.xfSecret);
+  var lang = s.xfLang || "en_us";
+  xfRec.ws = new WebSocket(url);
+  xfRec.sessionId++;
+  xfRec.startedAt = Date.now();
+  xfRec.interimText = "";
+
+  xfRec.ws.onopen = function () {
+    var frame = {
+      common: { app_id: s.xfAppid },
+      business: { language: lang, domain: "iat", accent: "mandarin", eos: 3000 },
+      data: { status: 0, format: "audio/L16;rate=16000", encoding: "raw", audio: "" }
+    };
+    xfRec.ws.send(JSON.stringify(frame));
+  };
+  xfRec.ws.onmessage = function (ev) {
+    try {
+      var resp = JSON.parse(ev.data);
+      if (resp.code !== 0) {
+        setStatus("讯飞错误 " + resp.code + "：" + (resp.message || ""), false);
+        return;
+      }
+      if (resp.data && resp.data.result) {
+        var text = resp.data.result.text || "";
+        var isFinal = resp.data.status === 2;   // 2 = 这一轮结束
+        if (resp.data.result.pgs === "rpl") {
+          // 动态修正场景：替换之前返回的 interim
+          xfRec.interimText = text;
+        } else {
+          if (isFinal) {
+            // 本轮 final：如果之前有 interim 要先冲掉，再发 final
+            if (xfRec.interimText) {
+              var c = $("current"); c.hidden = true;
+              xfRec.interimText = "";
+            }
+            text = text.trim();
+            if (text) pushFinal(text);
+          } else {
+            xfRec.interimText = text;
+            var c2 = $("current"); c2.hidden = false; c2.textContent = text;
+            scrollBottom();
+          }
+        }
+      }
+    } catch (e) {}
+  };
+  xfRec.ws.onerror = function () { setStatus("讯飞 WebSocket 错误，自动重连…", false); };
+  xfRec.ws.onclose = function () {
+    if (!running || paused) return;
+    // 55 秒到了或服务端断开 → 自动重连
+    if (Date.now() - xfRec.startedAt > 50000) {
+      setTimeout(function () { if (running && !paused) xfStartSession(); }, 300);
+    } else {
+      setTimeout(function () { if (running && !paused) xfStartSession(); }, 500);
+    }
+  };
+}
+
+/* 停止当前讯飞会话（发结束帧 + 关连接） */
+function xfStopSession(isEnd) {
+  if (xfRec.ws && xfRec.ws.readyState === 1) {
+    try {
+      var frame = { data: { status: 2, format: "audio/L16;rate=16000", encoding: "raw", audio: "" } };
+      xfRec.ws.send(JSON.stringify(frame));
+    } catch (e) {}
+  }
+  try { xfRec.ws.close(); } catch (e) {}
+  xfRec.ws = null;
+  xfRec.interimText = "";
+  $("current").hidden = true;
+}
+
+/* 整体启动：麦克风 → AudioContext → WebSocket */
+async function xfStartAll() {
+  try {
+    xfRec.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
+    xfRec.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    xfRec.source = xfRec.ctx.createMediaStreamSource(xfRec.stream);
+    xfRec.node = xfRec.ctx.createScriptProcessor(4096, 1, 1);
+    xfRec.node.onaudioprocess = xfAudioProcess;
+    xfRec.source.connect(xfRec.node);
+    xfRec.node.connect(xfRec.ctx.destination);
+    xfRec.pcBuf = null;
+    await xfStartSession();
+  } catch (e) {
+    stopAll();
+    if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+      setStatus("麦克风权限被拒绝，请在浏览器设置里允许", false);
+    } else {
+      setStatus("无法启动讯飞识别：" + e.message, false);
     }
   }
-  return best;
 }
-function startRec() {
-  rec = new SR();
-  rec.lang = $("recLang") ? $("recLang").value : "en-US";
-  rec.continuous = true;
-  rec.interimResults = true;
-  rec.maxAlternatives = 3;   // 要 3 个备选词，择优取更准的那个
-  rec.onresult = function (e) {
-    var interim = "", finalTxt = "";
-    for (var i = e.resultIndex; i < e.results.length; i++) {
-      var r = e.results[i];
-      var t = r.isFinal ? pickBestAlternative(r) : r[0].transcript;
-      if (r.isFinal) finalTxt += t + " "; else interim += t;
-    }
-    if (interim) {
-      var c = $("current"); c.hidden = false; c.textContent = pending ? pending + " " + interim : interim;
-      scrollBottom();
-    }
-    if (finalTxt) {
-      finalTxt = finalTxt.trim();
-      if (finalTxt) pushFinal(finalTxt);
-      $("current").hidden = !pending;
-      if (pending) $("current").textContent = pending;
-    }
-  };
-  rec.onerror = function (e) {
-    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      stopAll(); setStatus("麦克风权限被拒绝，请在浏览器设置里允许", false);
-    } else if (e.error === "network") {
-      setStatus("识别服务网络异常，自动重试中…", false);
-    }
-  };
-  rec.onend = function () {
-    if (running && !paused) { flushPending(); setTimeout(function () { if (running && !paused) startRec(); }, 300); }
-  };
-  try { rec.start(); } catch (e) {}
+
+function xfStopAll() {
+  xfStopSession(true);
+  try { xfRec.node && xfRec.node.disconnect(); } catch (e) {}
+  try { xfRec.source && xfRec.source.disconnect(); } catch (e) {}
+  try { xfRec.ctx && xfRec.ctx.close(); } catch (e) {}
+  try { xfRec.stream && xfRec.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+  xfRec.ctx = null; xfRec.source = null; xfRec.node = null; xfRec.stream = null;
 }
+
 function stopAll() {
-  running = false;
-  paused = false;
+  running = false; paused = false;
   flushPending();
-  if (rec) { try { rec.stop(); } catch (e) {} }
+  xfStopAll();
   $("current").hidden = true;
   var b = $("mainBtn");
   b.textContent = "开始翻译"; b.classList.remove("stop");
@@ -886,24 +1031,28 @@ function stopAll() {
 
 /* ---------- 主按钮 + 暂停按钮 ---------- */
 $("mainBtn").onclick = function () {
-  if (!SR) return;
+  if (!hasXunfei()) {
+    setStatus("请先到设置面板填写讯飞 AppID / APIKey / APISecret", false);
+    $("gearBtn").click();   // 自动弹出设置
+    return;
+  }
   if (!running) {
     running = true; paused = false;
     summaryText = "";
     $("summaryBox").hidden = true;
     $("summaryText").hidden = false;
     $("sumToggle").textContent = "收起";
-    sessionStart = Date.now(); sessionMark = records.length;   // 这一场的起点
+    sessionStart = Date.now(); sessionMark = records.length;
     $("pauseBtn").hidden = false;
     $("current").hidden = true;
     var b = $("mainBtn");
     b.textContent = "结束"; b.classList.add("stop");
     setStatus("聆听中…", true);
     keepAwake();
-    startRec();
+    xfStartAll();
   } else {
     stopAll();
-    drainJobs().then(summarize).then(archiveSession);   // 等翻完 → 总结 → 存档这场会议
+    drainJobs().then(summarize).then(archiveSession);
   }
 };
 
@@ -912,7 +1061,7 @@ $("pauseBtn").onclick = function () {
   if (!paused) {
     paused = true;
     flushPending();
-    if (rec) { try { rec.stop(); } catch (e) {} }
+    xfStopSession(false);
     $("pauseBtn").textContent = "继续";
     setStatus("已暂停（课间休息）", false);
   } else {
@@ -920,7 +1069,7 @@ $("pauseBtn").onclick = function () {
     $("pauseBtn").textContent = "暂停";
     setStatus("聆听中…", true);
     keepAwake();
-    startRec();
+    xfStartSession();
   }
 };
 
