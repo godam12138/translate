@@ -916,6 +916,7 @@ async function xfStartSession() {
   var host = "iat-api.xfyun.cn", path = "/v2/iat";
   var url = await xfSignedUrl(host, path, s.xfKey, s.xfSecret);
   var lang = s.xfLang || "en_us";
+  var isEn = lang.indexOf("en") === 0;
   xfRec.ws = new WebSocket(url);
   xfRec.sessionId++;
   xfRec.startedAt = Date.now();
@@ -924,7 +925,7 @@ async function xfStartSession() {
   xfRec.ws.onopen = function () {
     var frame = {
       common: { app_id: s.xfAppid },
-      business: { language: lang, domain: "iat", accent: "mandarin", eos: 3000 },
+      business: { language: lang, domain: "iat", accent: isEn ? "en_us" : "mandarin", eos: 3000 },
       data: { status: 0, format: "audio/L16;rate=16000", encoding: "raw", audio: "" }
     };
     xfRec.ws.send(JSON.stringify(frame));
