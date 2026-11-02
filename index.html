@@ -892,6 +892,142 @@ async function xfSignedUrl(host, path, apiKey, apiSecret) {
   return "wss://" + host + path + "?" + params;
 }
 
+/* ---------- 讯飞 HTTP 轮询模式（兜底方案） ---------- */
+/* 录 6 秒音频 → POST 给讯飞 → 拿结果 → 继续下一轮 */
+var xfHttp = { stream: null, ctx: null, source: null, node: null, chunkBuf: null, running: false, paused: false };
+
+async function xfHttpStart() {
+  if (!hasXunfei()) { asrStartAll(); return; }
+  try {
+    xfHttp.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
+    xfHttp.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    xfHttp.source = xfHttp.ctx.createMediaStreamSource(xfHttp.stream);
+    xfHttp.node = xfHttp.ctx.createScriptProcessor(4096, 1, 1);
+    xfHttp.node.onaudioprocess = xfHttpOnAudio;
+    xfHttp.source.connect(xfHttp.node);
+    xfHttp.node.connect(xfHttp.ctx.destination);
+    xfHttp.chunkBuf = null;
+    xfHttp.running = true;
+    xfHttp.paused = false;
+    setStatus("聆听中（讯飞 HTTP 模式）…", true);
+    setTimeout(xfHttpFlushChunk, 6000);  // 6 秒后发第一包
+  } catch (e) {
+    console.log("HTTP 模式启动失败", e);
+    asrStartAll();  // 回退苹果
+  }
+}
+
+function xfHttpOnAudio(e) {
+  if (!xfHttp.running || xfHttp.paused) return;
+  var input = e.inputBuffer.getChannelData(0);
+  var origRate = e.inputBuffer.sampleRate;
+  var targetRate = 16000;
+  var ratio = origRate / targetRate;
+  var outLen = Math.round(input.length / ratio);
+  var out = new Float32Array(outLen);
+  for (var i = 0; i < outLen; i++) out[i] = input[Math.floor(i * ratio)];
+  var pcm = floatToInt16(out);
+  if (xfHttp.chunkBuf) {
+    var merged = new Int16Array(xfHttp.chunkBuf.byteLength / 2 + pcm.byteLength / 2);
+    merged.set(new Int16Array(xfHttp.chunkBuf), 0);
+    merged.set(new Int16Array(pcm), xfHttp.chunkBuf.byteLength / 2);
+    xfHttp.chunkBuf = merged.buffer;
+  } else {
+    xfHttp.chunkBuf = pcm;
+  }
+}
+
+async function xfHttpFlushChunk() {
+  if (!xfHttp.running) return;
+  if (xfHttp.chunkBuf && xfHttp.chunkBuf.byteLength > 3200) {  // > 100ms 才发
+    var audioBytes = new Uint8Array(xfHttp.chunkBuf);
+    var bin = "";
+    for (var i = 0; i < audioBytes.length; i++) bin += String.fromCharCode(audioBytes[i]);
+    var audioB64 = btoa(bin);
+    xfHttp.chunkBuf = null;
+    try {
+      var s = JSON.parse(localStorage.getItem("tongchuan") || "{}");
+      var date = Math.floor(Date.now() / 1000).toString();
+      var signatureOrig = "host=api.xfyun.cn&date=" + date;
+      var signature = await hmacSha256(s.xfSecret, signatureOrig);
+      var authOrigin = 'api_key="' + s.xfKey + '", algorithm="hmac-sha256", headers="host date request-line", signature="' + signature + '"';
+      var authorization = btoa(authOrigin);
+
+      var lang = (s.xfLang || "en_us").replace("_", "");
+      var params = new URLSearchParams();
+      params.set("engine_type", "sms16k");
+      params.set("aue", "raw");
+      params.set("sample_rate", "16000");
+      params.set("lang", lang);
+      params.set("audio", audioB64);
+
+      var resp = await fetch("https://api.xfyun.cn/v1/service/v1/iat", {
+        method: "POST",
+        headers: {
+          "Host": "api.xfyun.cn",
+          "Date": date,
+          "Authorization": authorization,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: params.toString()
+      });
+      var body = await resp.json();
+      if (body.code === 0 && body.data) {
+        // data 是带逗号分隔的多段结果
+        var parts = body.data.split(",");
+        var text = parts.map(function (p) {
+          try { return JSON.parse(p).text || ""; } catch (e) { return ""; }
+        }).join("");
+        text = text.trim();
+        if (text) pushFinal(text);
+      } else if (body.code && body.code !== "0") {
+        console.log("讯飞 HTTP 错误:", body.code, body.desc);
+      }
+    } catch (e) {
+      console.log("讯飞 HTTP 异常:", e.message);
+    }
+  }
+  setTimeout(xfHttpFlushChunk, xfHttp.paused ? 60000 : 6000);
+}
+
+function xfHttpStop() {
+  xfHttp.running = false;
+  try { xfHttp.node && xfHttp.node.disconnect(); } catch (e) {}
+  try { xfHttp.source && xfHttp.source.disconnect(); } catch (e) {}
+  try { xfHttp.ctx && xfHttp.ctx.close(); } catch (e) {}
+  try { xfHttp.stream && xfHttp.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+  xfHttp.ctx = null; xfHttp.source = null; xfHttp.node = null; xfHttp.stream = null;
+}
+
+/* 判断讯飞哪种模式可用：WebSocket 优先，HTTP 兜底，最后苹果 */
+function startRecognition() {
+  if (hasXunfei()) {
+    // 先试 WebSocket，失败自动回退 HTTP，再失败回退苹果
+    setStatus("启动讯飞识别（WebSocket）…", true);
+    xfStartAll();
+  } else if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+    setStatus("启动苹果识别（回退模式）…", true);
+    asrStartAll();
+  } else {
+    stopAll();
+    setStatus("当前浏览器不支持语音识别", false);
+  }
+}
+function stopRecognition() {
+  xfStopAll();
+  xfHttpStop();
+  asrStopAll();
+}
+function pauseRecognition() {
+  if (xfRec.ws && xfRec.ws.readyState === 1) { xfStopSession(false); }
+  else { xfHttp.paused = true; }
+}
+function resumeRecognition() {
+  if (xfRec.ws) { xfStartSession(); }
+  else if (xfHttp.ctx) { xfHttp.paused = false; }
+  else { asrStartAll(); }
+}
+
 /* Float32 PCM → Int16 PCM */
 function floatToInt16(float32) {
   var buf = new ArrayBuffer(float32.length * 2);
@@ -993,18 +1129,18 @@ async function xfStartSession() {
   };
   xfRec.ws.onerror = function (ev) {
     var rs = xfRec.ws.readyState;
-    setStatus("讯飞 WebSocket 错误，尝试回退到苹果识别…", false);
+    setStatus("讯飞 WebSocket 错误，尝试 HTTP 模式…", false);
     xfStopAll();
-    if (running && !paused) asrStartAll();
+    if (running && !paused) xfHttpStart();
   };
   xfRec.ws.onclose = function (ev) {
     var code = ev.code || 0;
     var reason = ev.reason || "";
     if (code === 1006 && Date.now() - xfRec.startedAt < 3000) {
-      // 连接刚建立就断（401 签名错），直接回退苹果识别
-      setStatus("讯飞鉴权失败，回退到苹果识别", false);
+      // 连接刚建立就断（401 签名错），回退 HTTP 模式
+      setStatus("讯飞 WebSocket 鉴权失败，回退 HTTP 模式", false);
       xfStopAll();
-      if (running && !paused) asrStartAll();
+      if (running && !paused) xfHttpStart();
       return;
     }
     if (!running || paused) return;
