@@ -198,7 +198,7 @@
       <button id="testBtn">测试连接</button>
       <span id="testOut" style="font-size:12px;color:#6b7280;flex:1;word-break:break-all;line-height:1.5"></span>
     </div>
-    <p class="hint">硅基流动的 Qwen3-8B 长期免费、国内直连。Key 只保存在这台设备，下次打开自动填好。</p>
+    <p class="hint">翻译引擎任选：硅基流动（siliconflow.cn）、DeepSeek、Kimi 等均可。接口地址 + 模型名 + API Key 填一次自动记住。</p>
   </div>
   <div class="row" id="mmBox" hidden>
     <label>邮箱(可选)</label>
@@ -206,8 +206,8 @@
   </div>
   <details id="advBox">
     <summary>高级设置（一般不用动）</summary>
-    <div class="row"><label>接口地址</label><input id="llmUrl" value="https://api.siliconflow.cn/v1" /></div>
-    <div class="row"><label>模型名</label><input id="llmModel" value="Qwen/Qwen3-8B" /></div>
+    <div class="row"><label>接口地址</label><input id="llmUrl" placeholder="https://api.siliconflow.cn/v1 或其他" /></div>
+    <div class="row"><label>模型名</label><input id="llmModel" placeholder="例如 Qwen/Qwen3-8B" /></div>
   </details>
   <details id="sttBox">
     <summary>语音识别（讯飞，推荐）</summary>
@@ -297,9 +297,9 @@ function loadSettings() {
   try { s = JSON.parse(localStorage.getItem("tongchuan") || "{}"); } catch (e) {}
   try {
     if (s.engine) $("engine").value = s.engine;
-    if (s.url) $("llmUrl").value = /bigmodel\.cn/.test(s.url) ? "https://api.siliconflow.cn/v1" : s.url;
+    if (s.url) $("llmUrl").value = s.url;
     if (s.key) $("llmKey").value = s.key;
-    if (s.model && s.model !== "glm-4-flash") $("llmModel").value = s.model;
+    if (s.model) $("llmModel").value = s.model;
     if (s.tts) $("ttsSel").value = s.tts;
     if (s.mm) $("mmEmail").value = s.mm;
     if (s.xfAppid) $("xfAppid").value = s.xfAppid;
@@ -402,7 +402,7 @@ function translate(text, onPartial) {
   var key = $("llmKey").value.trim();
   if (!key) return Promise.reject(new Error("请先在设置里填入 API Key"));
   var base = $("llmUrl").value.trim().replace(/\/+$/, "");
-  var model = $("llmModel").value.trim() || "Qwen/Qwen3-8B";
+  var model = $("llmModel").value.trim();
   var body = {
     model: model,
     temperature: 0.2,
@@ -768,7 +768,7 @@ function addFinal(en) {
 function callLLM(userContent, maxTokens) {
   var key = $("llmKey").value.trim();
   var base = $("llmUrl").value.trim().replace(/\/+$/, "");
-  var model = $("llmModel").value.trim() || "Qwen/Qwen3-8B";
+  var model = $("llmModel").value.trim();
   if (!key) return Promise.reject(new Error("没填 API Key"));
   var body = { model: model, temperature: 0.3, max_tokens: maxTokens || 400, messages: [{ role: "user", content: userContent }] };
   if (/qwen3/i.test(model)) body.enable_thinking = false;
