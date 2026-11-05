@@ -47,16 +47,18 @@
     padding: 12px 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .14);
     z-index: 20;
   }
-  #advBox { border: none; background: transparent; padding: 8px 0 0; margin: 0; }
-  #advBox summary { font-weight: 400; font-size: 13px; color: #6b7280; }
+  #advBox, #glossBox { border: none; background: transparent; padding: 8px 0 0; margin: 0; }
+  #advBox summary, #glossBox summary { font-weight: 400; font-size: 13px; color: #6b7280; }
   #helpPanel { font-size: 13px; line-height: 1.75; color: #52525b; }
   #helpPanel p + p { margin-top: 8px; }
   .row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
   .row label { width: 72px; font-size: 13px; color: #52525b; flex-shrink: 0; }
-  .row select, .row input {
+  .row select, .row input, .row textarea {
     flex: 1; min-width: 0; font-size: 14px; padding: 8px 10px;
     border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #171717;
+    font-family: inherit;
   }
+  .row textarea { resize: vertical; min-height: 76px; line-height: 1.5; }
   .row button {
     font-size: 14px; padding: 8px 14px; border: 1px solid #d1d5db;
     border-radius: 8px; background: #fff; cursor: pointer;
@@ -142,7 +144,7 @@
 
   @media (prefers-color-scheme: dark) {
     body { background: #101012; color: #e5e7eb; }
-    details, #list li, .row select, .row input, .row button, #current, #bar .miniBtn, #bar2 .miniBtn, .miniBtn, #summaryBox, #settingsPanel, .iconBtn, #helpPanel { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
+    details, #list li, .row select, .row input, .row textarea, .row button, #current, #bar .miniBtn, #bar2 .miniBtn, .miniBtn, #summaryBox, #settingsPanel, .iconBtn, #helpPanel { background: #1a1a1e; border-color: #2d2d33; color: #e5e7eb; }
     #list .en { color: #f3f4f6; }
     #pauseBtn { background: #2a2114; border-color: #6b4a20; color: #fbbf24; }
     #summaryText { color: #e5e7eb; }
@@ -176,11 +178,11 @@
 </header>
 
 <div id="helpPanel" hidden>
-  <p><b>第一次用：</b>先点齿轮 → 展开「语音识别（讯飞）」→ 填 AppID / APIKey / APISecret（注册 xfyun.cn 控制台创建「语音听写流式版」应用即可拿到）</p>
-  <p><b>收音技巧：</b>iPad 平放桌面、麦克风朝下对着老师；离老师 5 米内；iPad 音量静音（外放声音会被麦克风收回来干扰识别）</p>
+  <p><b>第一次用：</b>点齿轮 → 填大模型 API Key（硅基流动，Qwen3-8B 免费）→ 点「测试连接」。语音识别用浏览器自带的，不用额外配置。</p>
+  <p><b>收音技巧：</b>电脑麦克风尽量靠近老师；关掉教室里其他会出声的设备，外放的声音会被麦克风收回来干扰识别</p>
+  <p><b>更准一点：</b>把课件里反复出现的专业名词粘到设置里的「专业术语」，识别和翻译都会优先用这些词；大模型还会顺手把明显听错的词改回来</p>
   <p><b>上课流程：</b>开始 → 课间点暂停 → 结束自动生成 AI 要点总结 → 会议记录面板里看历史、导出或删除</p>
   <p><b>保存建议：</b>浏览器本地只保留最近 500 条，重要的课下课后点「保存文件」或去「会议记录」导出那一场</p>
-  <p><b>讯飞额度：</b>每日 500 次免费（约 1 小时 20 分钟连续使用），超了约 0.2 元/千次，一学期花几块钱</p>
 </div>
 
 <div id="settingsPanel" hidden>
@@ -209,20 +211,21 @@
     <div class="row"><label>接口地址</label><input id="llmUrl" value="https://api.siliconflow.cn/v1" /></div>
     <div class="row"><label>模型名</label><input id="llmModel" value="Qwen/Qwen3-8B" /></div>
   </details>
-  <details id="sttBox">
-    <summary>语音识别（讯飞，推荐）</summary>
-    <p class="hint">iPad Safari 自带识别准确率低，讯飞是专业引擎（豆包同源）。注册 xfyun.cn 创建「语音听写（流式版）」应用后拿到 AppID / APIKey / APISecret。每日 500 次免费，超了 0.0002 元/次。</p>
-    <div class="row"><label>AppID</label><input id="xfAppid" placeholder="讯飞控制台 → 语音听写 → AppID" /></div>
-    <div class="row"><label>APIKey</label><input id="xfKey" placeholder="32 位字符串" /></div>
-    <div class="row"><label>APISecret</label><input id="xfSecret" placeholder="32 位字符串" /></div>
-    <div class="row">
-      <label>识别语种</label>
-      <select id="xfLang">
-        <option value="en_us">英语（推荐）</option>
-        <option value="zh_cn">中文</option>
-      </select>
+  <details id="glossBox">
+    <summary>专业术语（已预置，不用管）</summary>
+    <div class="row" style="align-items:flex-start">
+      <label style="padding-top:8px">术语表</label>
+      <textarea id="glossary" placeholder="每行写一个专业词，识别和翻译都会优先用这些词"></textarea>
     </div>
+    <p class="hint">已预置数据结构、高级机器学习、自然语言处理的常用术语，填一次自动记住，不用每次粘。想临时补充就在下面加几行，改完自动保存。</p>
   </details>
+  <div class="row">
+    <label>识别语种</label>
+    <select id="asrLang">
+      <option value="en-US">英语（推荐）</option>
+      <option value="zh-CN">中文</option>
+    </select>
+  </div>
   <div class="row">
     <label>中文朗读</label>
     <select id="ttsSel">
@@ -272,53 +275,71 @@
 var $ = function (id) { return document.getElementById(id); };
 var running = false, paused = false, chars = 0, fs = 1, lock = null;
 var summaryText = "";
-/* 讯飞识别全局变量 */
-var xfRec = { ws: null, ctx: null, source: null, node: null, stream: null, pcBuf: null, startedAt: 0, interimText: "", sessionId: 0 };
-
-/* 苹果自带识别全局变量（讯飞连不上时自动回退） */
+/* 语音识别：使用浏览器自带的 Web Speech API（Chrome / Safari 都支持） */
 var asrRec = null;
-var asrAlternatives = [];  // 累积所有候选词，用于择优
 
-function hasXunfei() {
-  var s = {};
-  try { s = JSON.parse(localStorage.getItem("tongchuan") || "{}"); } catch (e) {}
-  return !!(s.xfAppid && s.xfKey && s.xfSecret);
-}
-
-/* 主识别引擎：讯飞优先，没密钥自动用苹果自带识别 */
 function startRecognition() {
-  if (hasXunfei()) {
-    setStatus("启动讯飞识别…", true);
-    xfStartAll();
-  } else if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
-    setStatus("启动苹果识别（回退模式）…", true);
+  if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+    setStatus("启动语音识别…", true);
     asrStartAll();
   } else {
     stopAll();
-    setStatus("当前浏览器不支持语音识别", false);
+    setStatus("当前浏览器不支持语音识别，请用 Chrome 或 Safari", false);
   }
 }
-function stopRecognition() {
-  if (hasXunfei()) xfStopAll();
-  else asrStopAll();
-}
-function pauseRecognition() {
-  if (hasXunfei()) xfStopSession(false);
-  else asrStopAll();
-}
-function resumeRecognition() {
-  if (hasXunfei()) xfStartSession();
-  else asrStartAll();
-}
+function stopRecognition() { asrStopAll(); }
+function pauseRecognition() { asrStopAll(); }
+function resumeRecognition() { asrStartAll(); }
 
 /* ---------- 设置读写 ---------- */
+/* 预置术语：数据结构 / 高级机器学习 / 自然语言处理（可在设置里自由增删） */
+var DEFAULT_GLOSSARY = [
+  // 数据结构
+  "array", "linked list", "stack", "queue", "deque", "priority queue", "heap",
+  "binary tree", "binary search tree", "AVL tree", "red-black tree", "trie",
+  "graph", "directed acyclic graph", "adjacency matrix", "adjacency list",
+  "hash table", "hash function", "collision resolution", "open addressing", "chaining",
+  "recursion", "traversal", "preorder", "inorder", "postorder",
+  "breadth-first search", "depth-first search", "topological sort",
+  "shortest path", "Dijkstra", "minimum spanning tree", "Kruskal", "Prim",
+  "dynamic programming", "greedy algorithm", "divide and conquer", "backtracking",
+  "time complexity", "space complexity", "Big O notation", "amortized analysis",
+  "union find", "segment tree", "binary indexed tree",
+  // 高级机器学习
+  "supervised learning", "unsupervised learning", "reinforcement learning",
+  "regression", "classification", "clustering", "logistic regression",
+  "support vector machine", "decision tree", "random forest", "gradient boosting",
+  "XGBoost", "neural network", "convolutional neural network",
+  "recurrent neural network", "transformer", "attention mechanism", "self-attention",
+  "backpropagation", "gradient descent", "stochastic gradient descent",
+  "learning rate", "loss function", "cross-entropy", "regularization",
+  "L1 regularization", "L2 regularization", "dropout", "batch normalization",
+  "overfitting", "underfitting", "hyperparameter", "cross-validation",
+  "bias-variance tradeoff", "embedding", "latent variable", "variational inference",
+  "expectation maximization", "generative model", "discriminative model",
+  "generative adversarial network", "diffusion model", "autoencoder",
+  "principal component analysis", "k-means", "kernel method", "ensemble learning",
+  "bagging", "boosting", "fine-tuning", "transfer learning", "foundation model",
+  "inference", "convex optimization", "manifold",
+  // 自然语言处理
+  "tokenization", "token", "vocabulary", "corpus", "stop word", "stemming",
+  "lemmatization", "part-of-speech tagging", "dependency parsing",
+  "constituency parsing", "named entity recognition", "sequence labeling",
+  "language model", "n-gram", "word embedding", "word2vec", "BERT", "GPT",
+  "masked language modeling", "next token prediction", "prompt engineering",
+  "zero-shot", "few-shot", "in-context learning",
+  "retrieval-augmented generation", "machine translation", "beam search",
+  "perplexity", "sentiment analysis", "question answering", "summarization",
+  "hallucination", "RLHF", "instruction tuning", "byte-pair encoding",
+  "positional encoding", "semantic parsing", "text entailment", "annotation"
+];
+
 function saveSettings() {
   try {
     localStorage.setItem("tongchuan", JSON.stringify({
       engine: $("engine").value, url: $("llmUrl").value,
       key: $("llmKey").value, model: $("llmModel").value, tts: $("ttsSel").value,
-      mm: $("mmEmail").value, xfAppid: $("xfAppid").value, xfKey: $("xfKey").value,
-      xfSecret: $("xfSecret").value, xfLang: $("xfLang").value
+      mm: $("mmEmail").value, asrLang: $("asrLang").value, glossary: $("glossary").value
     }));
   } catch (e) {}
 }
@@ -332,10 +353,11 @@ function loadSettings() {
     if (s.model && s.model !== "glm-4-flash") $("llmModel").value = s.model;
     if (s.tts) $("ttsSel").value = s.tts;
     if (s.mm) $("mmEmail").value = s.mm;
-    if (s.xfAppid) $("xfAppid").value = s.xfAppid;
-    if (s.xfKey) $("xfKey").value = s.xfKey;
-    if (s.xfSecret) $("xfSecret").value = s.xfSecret;
-    if (s.xfLang) $("xfLang").value = s.xfLang;
+    // 没保存过就用预置的（三门课的常用术语），保存过（哪怕是清空）就尊重用户自己的
+    $("glossary").value = typeof s.glossary === "string" ? s.glossary : DEFAULT_GLOSSARY.join("\n");
+    // 兼容旧版本：以前存的讯飞语种（en_us / zh_cn）迁移成浏览器识别的语种
+    if (s.asrLang) $("asrLang").value = s.asrLang;
+    else if (s.xfLang) $("asrLang").value = s.xfLang === "zh_cn" ? "zh-CN" : "en-US";
   } catch (e) {}
   $("settingsPanel").hidden = !!s.key;   // 已经填过 Key 就默认收起设置，界面更干净
   $("gearBtn").classList.toggle("on", !$("settingsPanel").hidden);
@@ -348,7 +370,7 @@ function updateEngineUI() {
 }
 loadSettings();
 /* 边输入边保存：即便没点别处就关掉页面，配置也不会丢 */
-["mmEmail", "llmUrl", "llmKey", "llmModel", "ttsSel", "xfAppid", "xfKey", "xfSecret", "xfLang"].forEach(function (id) {
+["mmEmail", "llmUrl", "llmKey", "llmModel", "ttsSel", "asrLang", "glossary"].forEach(function (id) {
   $(id).oninput = saveSettings;
   $(id).onchange = saveSettings;
 });
@@ -426,25 +448,49 @@ function translate(text, onPartial) {
       var t = d.responseData.translatedText;
       if (/MYMEMORY WARNING/i.test(t)) throw new Error("今日免费额度用完，请在设置里换成大模型接口");
       var el = document.createElement("div"); el.innerHTML = t;
-      return el.textContent;
+      return { en: text, zh: el.textContent };
     });
   }
   var key = $("llmKey").value.trim();
   if (!key) return Promise.reject(new Error("请先在设置里填入 API Key"));
   var base = $("llmUrl").value.trim().replace(/\/+$/, "");
   var model = $("llmModel").value.trim() || "Qwen/Qwen3-8B";
+  /* 术语表：让模型认识本课的专业词，顺便纠正识别错的词 */
+  var terms = $("glossary").value.split("\n").map(function (t) { return t.trim(); }).filter(Boolean);
+  var sys = "你是课堂同声传译助手。输入是语音识别得到的英文课堂内容，可能有同音词或专业术语误识别。\n" +
+            "请先修正明显错误的词（只改错的词，不要改写整个句子），再翻译成自然通顺的简体中文。\n" +
+            "严格只输出两行：\n第一行：修正后的英文\n第二行：中文译文\n不要输出解释、编号或任何其他内容。";
+  if (terms.length) sys += "\n本课专业术语（识别和翻译都以此为准）：" + terms.join("、");
   var body = {
     model: model,
     temperature: 0.2,
     messages: [
-      { role: "system", content: "你是课堂同声传译，把英文课堂内容翻译成简体中文。只输出译文，不要解释、不要任何前缀。专业术语第一次出现时在括号里保留英文原文。" },
+      { role: "system", content: sys },
       { role: "user", content: text }
     ]
   };
+  /* 模型输出约定：第一行英文修正稿，第二行中文译文 */
+  function splitOut(s) {
+    var i = s.indexOf("\n");
+    if (i >= 0) {
+      var en = s.slice(0, i).replace(/^(英文|English)\s*[:：]\s*/i, "").trim();
+      var zh = s.slice(i + 1).replace(/^(中文|译文|Chinese)\s*[:：]\s*/i, "").trim();
+      return { en: en, zh: zh };
+    }
+    // 兜底：万一模型写成"英文：xxx 中文：xxx"一行，也能拆开
+    var m = s.match(/(?:中文|译文|Chinese)\s*[:：]\s*([\s\S]+)$/i);
+    if (m) {
+      return {
+        en: s.slice(0, m.index).replace(/(?:英文|English)\s*[:：]\s*/i, "").trim(),
+        zh: m[1].trim()
+      };
+    }
+    return null;
+  }
   // Qwen3 默认会先"思考"再回答，翻译场景关掉它，快很多
   if (/qwen3/i.test(model)) body.enable_thinking = false;
   body.stream = true;        // 流式返回：中文边生成边显示，不用等整句
-  body.max_tokens = 220;
+  body.max_tokens = 320;
   var ctrl = window.AbortController ? new AbortController() : null;
   var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 30000);   // 30 秒没响应就放弃，避免整队列卡死
   return fetch(base + "/chat/completions", {
@@ -460,7 +506,8 @@ function translate(text, onPartial) {
       return r.json().then(function (d) {
         var out = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
         if (!out) throw new Error("接口无译文");
-        return out.trim();
+        var one = splitOut(out.trim());
+        return one && one.zh ? { en: one.en || text, zh: one.zh } : { en: text, zh: out.trim() };
       });
     }
     var reader = r.body.getReader(), dec = new TextDecoder(), acc = "", buf = "";
@@ -469,7 +516,9 @@ function translate(text, onPartial) {
         if (res.done) {
           var t = acc.trim();
           if (!t) throw new Error("接口无译文");
-          return t;
+          var fin = splitOut(t);
+          if (!fin || !fin.zh) return { en: text, zh: t };   // 模型没按格式输出就退回原文
+          return { en: fin.en || text, zh: fin.zh };
         }
         buf += dec.decode(res.value, { stream: true });
         var lines = buf.split("\n");
@@ -482,7 +531,11 @@ function translate(text, onPartial) {
           try {
             var j = JSON.parse(d);
             var delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
-            if (delta) { acc += delta; if (onPartial) onPartial(acc); }
+            if (delta) {
+              acc += delta;
+              var pp = splitOut(acc);
+              if (pp && pp.zh && onPartial) onPartial(pp.zh);   // 只看第二行，中文边生成边显示
+            }
           } catch (e) {}
         }
         return pump();
@@ -584,14 +637,22 @@ function flushPending() {
   clearTimeout(pendingTimer); pendingTimer = null;
   addFinal(s);
 }
+/* 攒够 2～3 句再翻，不在句子中间断，也不把一个词单独送去翻 */
+function scheduleFlush() {
+  clearTimeout(pendingTimer);
+  pendingTimer = setTimeout(function () {
+    if (!pending) return;
+    if (pending.length < 12) { scheduleFlush(); return; }   // 只有几个词，继续攒
+    flushPending();
+  }, 2500);
+}
 function pushFinal(t) {
   pending = pending ? pending + " " + t : t;
-  // 够长、或句尾标点出现、或停顿 0.8 秒，就送去翻译（延迟小，更接近"边听边译"）
-  if (pending.length >= 40 || /[.!?]["'”)]?\s*$/.test(t)) { flushPending(); }
-  else {
-    clearTimeout(pendingTimer);
-    pendingTimer = setTimeout(flushPending, 800);
-  }
+  var sentences = (pending.match(/[.!?]["'”)]?(?=\s|$)/g) || []).length;
+  // 满 2 句、或已经很长（没有标点的长句兜底），整段送翻
+  if (sentences >= 2 || pending.length >= 150) { flushPending(); return; }
+  // 否则等停顿：说完了停 2.5 秒才翻，句子中间卡顿不会断开
+  scheduleFlush();
 }
 
 /* ---------- 记录保存与导出 ---------- */
@@ -716,7 +777,7 @@ function renderLi(rec) {
   var enEl = document.createElement("div"); enEl.className = "en"; enEl.textContent = rec.en;
   var zhEl = document.createElement("div"); zhEl.className = "zh"; zhEl.textContent = rec.zh || "翻译中…";
   li.appendChild(enEl); li.appendChild(zhEl);
-  return { li: li, zhEl: zhEl };
+  return { li: li, enEl: enEl, zhEl: zhEl };
 }
 function appendLi(v) {
   var list = $("list");
@@ -768,7 +829,7 @@ $("clearBtn").onclick = function () {
 /* 识别后做一层轻量纠错：把识别器可能写歪的缩写、术语修正，翻译更准 */
 function fixRecognition(text) {
   // 缩写全大写（识别器常把 HTTP、AI、GPU 等写成小写）
-  text = text.replace(/\b(html|http|https|css|js|sql|usb|api|ai|ml|dl|gpu|cpu|ram|rom|uav|rgb|png|jpg|pdf|c\+\+|java|python|matrix|gradient|kernel)\b/gi, function (m) { return m.toUpperCase(); });
+  text = text.replace(/\b(html|http|https|css|js|sql|usb|api|ai|ml|dl|gpu|cpu|ram|rom|uav|rgb|png|jpg|pdf|c\+\+)\b/gi, function (m) { return m.toUpperCase(); });
   // "C plus plus" → "C++"
   text = text.replace(/\b[Cc]\s*(plus\s*plus|\+\s*\+|\+\+)\b/g, "C++");
   // 句首字母大写
@@ -787,7 +848,12 @@ function addFinal(en) {
     v.zhEl.className = "zh";
     v.zhEl.textContent = partial;
     scrollBottom();
-  }).then(function (t) { v.zhEl.textContent = t; rec.zh = t; saveLog(); speak(t); })
+  }).then(function (r) {
+    v.zhEl.textContent = r.zh; rec.zh = r.zh;
+    // 大模型顺手纠正了英文里的错词，就把上面那行英文和存档一起更新
+    if (r.en && r.en !== rec.en) { rec.en = r.en; v.enEl.textContent = r.en; }
+    saveLog(); speak(r.zh);
+  })
     .catch(function (e) { v.zhEl.textContent = "⚠ " + e.message; v.zhEl.className = "zh warn"; saveLog(); })
     .then(scrollBottom);
   chars += en.length;
@@ -857,354 +923,6 @@ function summarize() {
   });
 }
 
-/* ---------- 讯飞语音听写 WebSocket 实现 ---------- */
-
-/* RFC1123 格式日期（GMT） */
-function rfc1123Date() {
-  var w = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  var m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  var d = new Date();
-  return w[d.getUTCDay()] + ", " + pad(d.getUTCDate()) + " " + m[d.getUTCMonth()] + " " + d.getUTCFullYear() + " " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds()) + " GMT";
-}
-function pad(n) { return n < 10 ? "0" + n : "" + n; }
-
-/* HMAC-SHA256 + Base64（Web Crypto API，支持所有现代浏览器） */
-async function hmacSha256(key, data) {
-  var enc = new TextEncoder();
-  var cryptoKey = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  var sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(data));
-  return arrayBufferToBase64(sig);
-}
-function arrayBufferToBase64(buf) {
-  var bytes = new Uint8Array(buf), bin = "";
-  for (var i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin);
-}
-
-/* 组装签名后的 WebSocket URL */
-async function xfSignedUrl(host, path, apiKey, apiSecret) {
-  var date = rfc1123Date();
-  var origin = "host: " + host + "\ndate: " + date + "\nGET " + path + " HTTP/1.1";
-  var signature = await hmacSha256(apiSecret, origin);
-  var authOrigin = 'api_key="' + apiKey + '", algorithm="hmac-sha256", headers="host date request-line", signature="' + signature + '"';
-  var authorization = btoa(authOrigin);
-  var params = "authorization=" + encodeURIComponent(authorization) + "&date=" + encodeURIComponent(date) + "&host=" + encodeURIComponent(host);
-  return "wss://" + host + path + "?" + params;
-}
-
-/* ---------- 讯飞 HTTP 轮询模式（兜底方案） ---------- */
-/* 录 6 秒音频 → POST 给讯飞 → 拿结果 → 继续下一轮 */
-var xfHttp = { stream: null, ctx: null, source: null, node: null, chunkBuf: null, running: false, paused: false };
-
-async function xfHttpStart() {
-  if (!hasXunfei()) { asrStartAll(); return; }
-  try {
-    xfHttp.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
-    xfHttp.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    xfHttp.source = xfHttp.ctx.createMediaStreamSource(xfHttp.stream);
-    xfHttp.node = xfHttp.ctx.createScriptProcessor(4096, 1, 1);
-    xfHttp.node.onaudioprocess = xfHttpOnAudio;
-    xfHttp.source.connect(xfHttp.node);
-    xfHttp.node.connect(xfHttp.ctx.destination);
-    xfHttp.chunkBuf = null;
-    xfHttp.running = true;
-    xfHttp.paused = false;
-    setStatus("聆听中（讯飞 HTTP 模式）…", true);
-    setTimeout(xfHttpFlushChunk, 6000);  // 6 秒后发第一包
-  } catch (e) {
-    console.log("HTTP 模式启动失败", e);
-    asrStartAll();  // 回退苹果
-  }
-}
-
-function xfHttpOnAudio(e) {
-  if (!xfHttp.running || xfHttp.paused) return;
-  var input = e.inputBuffer.getChannelData(0);
-  var origRate = e.inputBuffer.sampleRate;
-  var targetRate = 16000;
-  var ratio = origRate / targetRate;
-  var outLen = Math.round(input.length / ratio);
-  var out = new Float32Array(outLen);
-  for (var i = 0; i < outLen; i++) out[i] = input[Math.floor(i * ratio)];
-  var pcm = floatToInt16(out);
-  if (xfHttp.chunkBuf) {
-    var merged = new Int16Array(xfHttp.chunkBuf.byteLength / 2 + pcm.byteLength / 2);
-    merged.set(new Int16Array(xfHttp.chunkBuf), 0);
-    merged.set(new Int16Array(pcm), xfHttp.chunkBuf.byteLength / 2);
-    xfHttp.chunkBuf = merged.buffer;
-  } else {
-    xfHttp.chunkBuf = pcm;
-  }
-}
-
-async function xfHttpFlushChunk() {
-  if (!xfHttp.running) return;
-  if (xfHttp.chunkBuf && xfHttp.chunkBuf.byteLength > 3200) {
-    var audioBytes = new Uint8Array(xfHttp.chunkBuf);
-    var bin = "";
-    for (var i = 0; i < audioBytes.length; i++) bin += String.fromCharCode(audioBytes[i]);
-    var audioB64 = btoa(bin);
-    xfHttp.chunkBuf = null;
-    try {
-      var s = JSON.parse(localStorage.getItem("tongchuan") || "{}");
-      var date = Math.floor(Date.now() / 1000).toString();
-      var signatureOrig = "host=api.xfyun.cn&date=" + date;
-      var signature = await hmacSha256(s.xfSecret, signatureOrig);
-      var authOrigin = 'api_key="' + s.xfKey + '", algorithm="hmac-sha256", headers="host date request-line", signature="' + signature + '"';
-      var authorization = btoa(authOrigin);
-
-      var lang = (s.xfLang || "en_us").replace("_", "");
-      var params = new URLSearchParams();
-      params.set("engine_type", "sms16k");
-      params.set("aue", "raw");
-      params.set("sample_rate", "16000");
-      params.set("lang", lang);
-      params.set("audio", audioB64);
-
-      var resp = await fetch("https://api.xfyun.cn/v1/service/v1/iat", {
-        method: "POST",
-        headers: {
-          "Host": "api.xfyun.cn",
-          "Date": date,
-          "Authorization": authorization,
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: params.toString()
-      });
-      var body = await resp.json();
-      if (body.code === 0 && body.data) {
-        var parts = body.data.split(",");
-        var text = parts.map(function (p) {
-          try { return JSON.parse(p).text || ""; } catch (e) { return ""; }
-        }).join("");
-        text = text.trim();
-        if (text) pushFinal(text);
-      } else if (body.code) {
-        // HTTP API 已经下架或服务类型不对，回退苹果
-        console.log("讯飞 HTTP 模式不可用:", body.code, body.desc);
-        xfHttpStop();
-        if (running && !paused) asrStartAll();
-        return;
-      }
-    } catch (e) {
-      // CORS 或网络错误，回退苹果
-      console.log("讯飞 HTTP 模式失败，回退苹果:", e.message);
-      xfHttpStop();
-      if (running && !paused) asrStartAll();
-      return;
-    }
-  }
-  setTimeout(xfHttpFlushChunk, xfHttp.paused ? 60000 : 6000);
-}
-
-function xfHttpStop() {
-  xfHttp.running = false;
-  try { xfHttp.node && xfHttp.node.disconnect(); } catch (e) {}
-  try { xfHttp.source && xfHttp.source.disconnect(); } catch (e) {}
-  try { xfHttp.ctx && xfHttp.ctx.close(); } catch (e) {}
-  try { xfHttp.stream && xfHttp.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
-  xfHttp.ctx = null; xfHttp.source = null; xfHttp.node = null; xfHttp.stream = null;
-}
-
-/* 判断讯飞哪种模式可用：WebSocket 优先，HTTP 兜底，最后苹果 */
-function startRecognition() {
-  if (hasXunfei()) {
-    // 先试 WebSocket，失败自动回退 HTTP，再失败回退苹果
-    setStatus("启动讯飞识别（WebSocket）…", true);
-    xfStartAll();
-  } else if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
-    setStatus("启动苹果识别（回退模式）…", true);
-    asrStartAll();
-  } else {
-    stopAll();
-    setStatus("当前浏览器不支持语音识别", false);
-  }
-}
-function stopRecognition() {
-  xfStopAll();
-  xfHttpStop();
-  asrStopAll();
-}
-function pauseRecognition() {
-  if (xfRec.ws && xfRec.ws.readyState === 1) { xfStopSession(false); }
-  else { xfHttp.paused = true; }
-}
-function resumeRecognition() {
-  if (xfRec.ws) { xfStartSession(); }
-  else if (xfHttp.ctx) { xfHttp.paused = false; }
-  else { asrStartAll(); }
-}
-
-/* Float32 PCM → Int16 PCM */
-function floatToInt16(float32) {
-  var buf = new ArrayBuffer(float32.length * 2);
-  var view = new DataView(buf);
-  for (var i = 0; i < float32.length; i++) {
-    var s = Math.max(-1, Math.min(1, float32[i]));
-    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-  return buf;
-}
-
-/* 16k 采样的原始缓冲区，累积后一次性发 1280 字节（160ms 音频） */
-function xfSendAudioChunk() {
-  if (!xfRec.ws || xfRec.ws.readyState !== 1) return;
-  if (xfRec.pcBuf && xfRec.pcBuf.byteLength >= 1280) {
-    var chunk = new Int16Array(xfRec.pcBuf.slice(0, 1280));
-    xfRec.pcBuf = xfRec.pcBuf.slice(1280);
-    xfRec.ws.send(chunk.buffer);
-  }
-}
-
-/* Web Audio 处理回调：44100Hz → 16000Hz 下采样，存到 Int16 缓冲区 */
-function xfAudioProcess(e) {
-  if (!running || paused) return;
-  var input = e.inputBuffer.getChannelData(0);
-  var origRate = e.inputBuffer.sampleRate;
-  var targetRate = 16000;
-  var ratio = origRate / targetRate;
-  var outLen = Math.round(input.length / ratio);
-  var out = new Float32Array(outLen);
-  for (var i = 0; i < outLen; i++) out[i] = input[Math.floor(i * ratio)];
-  var pcm = floatToInt16(out);
-  if (xfRec.pcBuf) {
-    var merged = new Int16Array(xfRec.pcBuf.byteLength / 2 + pcm.byteLength / 2);
-    merged.set(new Int16Array(xfRec.pcBuf), 0);
-    merged.set(new Int16Array(pcm), xfRec.pcBuf.byteLength / 2);
-    xfRec.pcBuf = merged.buffer;
-  } else {
-    xfRec.pcBuf = pcm;
-  }
-  xfSendAudioChunk();
-}
-
-/* 启动一轮讯飞会话（每 55 秒自动重连一次，绕过 60 秒上限） */
-async function xfStartSession() {
-  if (!hasXunfei()) {
-    setStatus("未配置讯飞密钥，请在设置面板填写 AppID/APIKey/APISecret", false);
-    running = false; $("mainBtn").textContent = "开始翻译"; $("pauseBtn").hidden = true;
-    return;
-  }
-  var s = JSON.parse(localStorage.getItem("tongchuan"));
-  var host = "iat-api.xfyun.cn", path = "/v2/iat";
-  var url = await xfSignedUrl(host, path, s.xfKey, s.xfSecret);
-  var lang = s.xfLang || "en_us";
-  var isEn = lang.indexOf("en") === 0;
-  xfRec.ws = new WebSocket(url);
-  xfRec.sessionId++;
-  xfRec.startedAt = Date.now();
-  xfRec.interimText = "";
-
-  xfRec.ws.onopen = function () {
-    var frame = {
-      common: { app_id: s.xfAppid },
-      business: { language: lang, domain: "iat", accent: isEn ? "en_us" : "mandarin", eos: 3000 },
-      data: { status: 0, format: "audio/L16;rate=16000", encoding: "raw", audio: "" }
-    };
-    xfRec.ws.send(JSON.stringify(frame));
-  };
-  xfRec.ws.onmessage = function (ev) {
-    try {
-      var resp = JSON.parse(ev.data);
-      if (resp.code !== 0) {
-        setStatus("讯飞错误 " + resp.code + "：" + (resp.message || ""), false);
-        return;
-      }
-      if (resp.data && resp.data.result) {
-        var text = resp.data.result.text || "";
-        var isFinal = resp.data.status === 2;   // 2 = 这一轮结束
-        if (resp.data.result.pgs === "rpl") {
-          // 动态修正场景：替换之前返回的 interim
-          xfRec.interimText = text;
-        } else {
-          if (isFinal) {
-            // 本轮 final：如果之前有 interim 要先冲掉，再发 final
-            if (xfRec.interimText) {
-              var c = $("current"); c.hidden = true;
-              xfRec.interimText = "";
-            }
-            text = text.trim();
-            if (text) pushFinal(text);
-          } else {
-            xfRec.interimText = text;
-            var c2 = $("current"); c2.hidden = false; c2.textContent = text;
-            scrollBottom();
-          }
-        }
-      }
-    } catch (e) {}
-  };
-  xfRec.ws.onerror = function (ev) {
-    var rs = xfRec.ws.readyState;
-    setStatus("讯飞 WebSocket 错误，尝试 HTTP 模式…", false);
-    xfStopAll();
-    if (running && !paused) xfHttpStart();
-  };
-  xfRec.ws.onclose = function (ev) {
-    var code = ev.code || 0;
-    var reason = ev.reason || "";
-    if (code === 1006 && Date.now() - xfRec.startedAt < 3000) {
-      // 连接刚建立就断（401 签名错），回退 HTTP 模式
-      setStatus("讯飞 WebSocket 鉴权失败，回退 HTTP 模式", false);
-      xfStopAll();
-      if (running && !paused) xfHttpStart();
-      return;
-    }
-    if (!running || paused) return;
-    // 55 秒到了或服务端断开 → 自动重连
-    if (Date.now() - xfRec.startedAt > 50000) {
-      setTimeout(function () { if (running && !paused) xfStartSession(); }, 300);
-    } else {
-      setTimeout(function () { if (running && !paused) xfStartSession(); }, 500);
-    }
-  };
-}
-
-/* 停止当前讯飞会话（发结束帧 + 关连接） */
-function xfStopSession(isEnd) {
-  if (xfRec.ws && xfRec.ws.readyState === 1) {
-    try {
-      var frame = { data: { status: 2, format: "audio/L16;rate=16000", encoding: "raw", audio: "" } };
-      xfRec.ws.send(JSON.stringify(frame));
-    } catch (e) {}
-  }
-  try { xfRec.ws.close(); } catch (e) {}
-  xfRec.ws = null;
-  xfRec.interimText = "";
-  $("current").hidden = true;
-}
-
-/* 整体启动：麦克风 → AudioContext → WebSocket */
-async function xfStartAll() {
-  try {
-    xfRec.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
-    xfRec.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    xfRec.source = xfRec.ctx.createMediaStreamSource(xfRec.stream);
-    xfRec.node = xfRec.ctx.createScriptProcessor(4096, 1, 1);
-    xfRec.node.onaudioprocess = xfAudioProcess;
-    xfRec.source.connect(xfRec.node);
-    xfRec.node.connect(xfRec.ctx.destination);
-    xfRec.pcBuf = null;
-    await xfStartSession();
-  } catch (e) {
-    stopAll();
-    if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
-      setStatus("麦克风权限被拒绝，请在浏览器设置里允许", false);
-    } else {
-      setStatus("无法启动讯飞识别：" + e.message, false);
-    }
-  }
-}
-
-function xfStopAll() {
-  xfStopSession(true);
-  try { xfRec.node && xfRec.node.disconnect(); } catch (e) {}
-  try { xfRec.source && xfRec.source.disconnect(); } catch (e) {}
-  try { xfRec.ctx && xfRec.ctx.close(); } catch (e) {}
-  try { xfRec.stream && xfRec.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
-  xfRec.ctx = null; xfRec.source = null; xfRec.node = null; xfRec.stream = null;
-}
-
 function stopAll() {
   running = false; paused = false;
   flushPending();
@@ -1217,26 +935,21 @@ function stopAll() {
   setStatus("已结束", false);
 }
 
-/* ---------- 苹果自带识别（讯飞回退方案） ---------- */
-/* 深度优化：interim 也显示、候选词择优、自动重连 */
+/* ---------- 浏览器自带语音识别（Web Speech API） ---------- */
+/* 关键点：interim（临时结果）每次是"整段重发"，只能整段覆盖显示，不能累加，否则会拼成一堆乱码 */
 function asrStartAll() {
   try {
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { setStatus("苹果识别不可用（需要 iOS 14.5+）", false); stopAll(); return; }
+    if (!SR) { setStatus("当前浏览器不支持语音识别，请用 Chrome 或 Safari", false); stopAll(); return; }
 
     asrRec = new SR();
-    var s = {};
-    try { s = JSON.parse(localStorage.getItem("tongchuan") || "{}"); } catch (e) {}
-    asrRec.lang = (s.xfLang || "en_us").replace(/_/g, "-");
+    asrRec.lang = $("asrLang").value || "en-US";
     asrRec.continuous = true;
     asrRec.interimResults = true;
-    asrRec.maxAlternatives = 5;
 
     var lastResultTime = Date.now();
-    asrAlternatives = [];
-    var pendingInterim = "";  // 累积的临时结果
 
-    asrRec.onstart = function () { setStatus("聆听中（苹果识别）…", true); };
+    asrRec.onstart = function () { setStatus("聆听中（浏览器识别）…", true); };
 
     asrRec.onresult = function (ev) {
       lastResultTime = Date.now();
@@ -1245,35 +958,25 @@ function asrStartAll() {
       for (var i = ev.resultIndex; i < ev.results.length; i++) {
         var res = ev.results[i];
         var text = res[0].transcript.trim();
-
-        if (res.isFinal) {
-          finalText = text;
-          pendingInterim = "";
-        } else {
-          interim += text;
-        }
+        if (res.isFinal) finalText += (finalText ? " " : "") + text;
+        else interim += (interim ? " " : "") + text;
       }
 
-      // 策略：final 直接提交；interim 累积到 pendingInterim，每次变化都更新预览
+      // final 进翻译；interim 整段覆盖显示
       if (finalText) {
-        finalText = finalText.trim();
         if (finalText.length > 1) pushFinal(finalText);
-        var c = $("current"); c.hidden = true;
-      } else if (interim) {
-        // interim 结果显示在虚线框里（实时预览）
-        pendingInterim += " " + interim;
-        pendingInterim = pendingInterim.trim();
-        var c2 = $("current");
-        c2.hidden = false;
-        c2.textContent = pendingInterim;
+        $("current").hidden = true;
+        $("current").textContent = "";
       }
+      var c = $("current");
+      if (interim) { c.hidden = false; c.textContent = interim; }
       scrollBottom();
     };
 
     asrRec.onerror = function (ev) {
-      console.log("苹果识别错误:", ev.error);
+      console.log("语音识别错误:", ev.error);
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
-        setStatus("麦克风权限被拒绝，请在 iPad 设置里允许 Safari 使用麦克风", false); stopAll(); return;
+        setStatus("麦克风权限被拒绝，请在浏览器设置里允许使用麦克风", false); stopAll(); return;
       }
       if (ev.error === "no-speech" || ev.error === "aborted") {
         if (running && !paused) {
@@ -1297,7 +1000,7 @@ function asrStartAll() {
 
     asrRec.start();
   } catch (e) {
-    setStatus("苹果识别启动失败：" + e.message, false);
+    setStatus("语音识别启动失败：" + e.message, false);
     stopAll();
   }
 }
