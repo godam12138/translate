@@ -438,7 +438,7 @@ function speak(zh) {
 }
 
 /* ---------- 翻译 ---------- */
-function translate(text, onPartial) {
+function translate(text, onPartial, plain) {
   if ($("engine").value === "mymemory") {
     var url = "https://api.mymemory.translated.net/get?langpair=en|zh-CN&q=" + encodeURIComponent(text);
     var em = $("mmEmail").value.trim();
@@ -457,9 +457,15 @@ function translate(text, onPartial) {
   var model = $("llmModel").value.trim() || "Qwen/Qwen3-8B";
   /* 术语表：让模型认识本课的专业词，顺便纠正识别错的词 */
   var terms = $("glossary").value.split("\n").map(function (t) { return t.trim(); }).filter(Boolean);
-  var sys = "你是课堂同声传译助手。输入是语音识别得到的英文课堂内容，可能有同音词或专业术语误识别。\n" +
-            "请先修正明显错误的词（只改错的词，不要改写整个句子），再翻译成自然通顺的简体中文。\n" +
-            "严格只输出两行：\n第一行：修正后的英文\n第二行：中文译文\n不要输出解释、编号或任何其他内容。";
+  var sys;
+  if (plain) {
+    // 纯翻译：保证一定有中文，用于模型不按格式输出时的兜底
+    sys = "你是课堂同声传译，把英文课堂内容翻译成自然通顺的简体中文。只输出中文译文，不要输出英文、解释或任何前缀。";
+  } else {
+    sys = "你是课堂同声传译助手。输入是语音识别得到的英文课堂内容，可能有同音词或专业术语误识别。\n" +
+          "请先用术语表修正明显听错的词（只改错的词，不要改写句子），再翻译成自然通顺的简体中文。\n" +
+          "严格按下面格式输出，不要输出解释：\n英文：修正后的英文\n中文：中文译文";
+  }
   if (terms.length) sys += "\n本课专业术语（识别和翻译都以此为准）：" + terms.join("、");
   var body = {
     model: model,
@@ -469,28 +475,40 @@ function translate(text, onPartial) {
       { role: "user", content: text }
     ]
   };
-  /* 模型输出约定：第一行英文修正稿，第二行中文译文 */
+  /* 模型输出可能是"英文：…\n中文：…"，也可能英文自己换了好几行，甚至只给英文。
+     统一按"第一处汉字"切分：汉字之前算英文修正稿，之后算中文译文 */
   function splitOut(s) {
-    var i = s.indexOf("\n");
-    if (i >= 0) {
-      var en = s.slice(0, i).replace(/^(英文|English)\s*[:：]\s*/i, "").trim();
-      var zh = s.slice(i + 1).replace(/^(中文|译文|Chinese)\s*[:：]\s*/i, "").trim();
-      return { en: en, zh: zh };
+    var lines = s.split("\n"), en = [], zh = [], inZh = false;
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim();
+      if (!t) continue;
+      if (!inZh && /^(中文|译文|Chinese)\s*[:：]/.test(t)) {
+        inZh = true;
+        t = t.replace(/^(中文|译文|Chinese)\s*[:：]\s*/i, "");
+      } else if (!inZh) {
+        t = t.replace(/^(英文|English)\s*[:：]\s*/i, "");
+      }
+      if (!t) continue;
+      if (inZh || /[\u4e00-\u9fff]/.test(t)) { inZh = true; zh.push(t); }
+      else en.push(t);
     }
-    // 兜底：万一模型写成"英文：xxx 中文：xxx"一行，也能拆开
-    var m = s.match(/(?:中文|译文|Chinese)\s*[:：]\s*([\s\S]+)$/i);
-    if (m) {
-      return {
-        en: s.slice(0, m.index).replace(/(?:英文|English)\s*[:：]\s*/i, "").trim(),
-        zh: m[1].trim()
-      };
-    }
-    return null;
+    if (!zh.length) return en.length ? { en: en.join(" "), zh: "" } : null;
+    return { en: en.join(" ").trim(), zh: zh.join("\n").trim() };
+  }
+  /* 统一收尾：无论模型怎么发挥，都保证返回中文译文 */
+  function finish(raw) {
+    raw = raw.trim();
+    if (plain) return Promise.resolve({ en: text, zh: raw });
+    var p = splitOut(raw);
+    if (p && p.zh) return Promise.resolve({ en: p.en || text, zh: p.zh });
+    if (p && p.en) return translate(p.en, onPartial, true);   // 只纠正了英文 → 再翻一次
+    if (/[\u4e00-\u9fff]/.test(raw)) return Promise.resolve({ en: text, zh: raw });
+    return translate(text, onPartial, true);                  // 完全没中文 → 重翻原文
   }
   // Qwen3 默认会先"思考"再回答，翻译场景关掉它，快很多
   if (/qwen3/i.test(model)) body.enable_thinking = false;
   body.stream = true;        // 流式返回：中文边生成边显示，不用等整句
-  body.max_tokens = 320;
+  body.max_tokens = 400;
   var ctrl = window.AbortController ? new AbortController() : null;
   var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 30000);   // 30 秒没响应就放弃，避免整队列卡死
   return fetch(base + "/chat/completions", {
@@ -506,8 +524,7 @@ function translate(text, onPartial) {
       return r.json().then(function (d) {
         var out = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
         if (!out) throw new Error("接口无译文");
-        var one = splitOut(out.trim());
-        return one && one.zh ? { en: one.en || text, zh: one.zh } : { en: text, zh: out.trim() };
+        return finish(out);
       });
     }
     var reader = r.body.getReader(), dec = new TextDecoder(), acc = "", buf = "";
@@ -516,9 +533,7 @@ function translate(text, onPartial) {
         if (res.done) {
           var t = acc.trim();
           if (!t) throw new Error("接口无译文");
-          var fin = splitOut(t);
-          if (!fin || !fin.zh) return { en: text, zh: t };   // 模型没按格式输出就退回原文
-          return { en: fin.en || text, zh: fin.zh };
+          return finish(t);
         }
         buf += dec.decode(res.value, { stream: true });
         var lines = buf.split("\n");
@@ -533,8 +548,10 @@ function translate(text, onPartial) {
             var delta = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
             if (delta) {
               acc += delta;
-              var pp = splitOut(acc);
-              if (pp && pp.zh && onPartial) onPartial(pp.zh);   // 只看第二行，中文边生成边显示
+              if (onPartial) {
+                if (plain) onPartial(acc);                      // 纯翻译：整段就是中文
+                else { var pp = splitOut(acc); if (pp && pp.zh) onPartial(pp.zh); }
+              }
             }
           } catch (e) {}
         }
