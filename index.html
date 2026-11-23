@@ -291,6 +291,19 @@
   #pauseBtn.paused #icoPause { display: none; }
   #pauseBtn.paused #icoPlay { display: block; }
 
+  /* 翻上去看旧记录时出现的「回到最新」按钮 */
+  #jumpBtn {
+    position: fixed; right: 18px; bottom: calc(84px + env(safe-area-inset-bottom));
+    z-index: 23; width: 42px; height: 42px; border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, .05);
+    background: rgba(255, 255, 255, .96); color: #3f3f46;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .14);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  }
+  #jumpBtn svg { width: 17px; height: 17px; }
+  #jumpBtn:active { transform: scale(.95); }
+
   /* 弹层与历史面板改成同一套风格 */
   #settingsPanel, #helpPanel { border: 0; border-radius: 16px; padding: 14px 16px 18px; top: 54px; box-shadow: 0 18px 54px rgba(0, 0, 0, .17); }
   .miniBtn { border: 0; background: #f5f5f7; border-radius: 999px; padding: 8px 14px; color: #3f3f46; }
@@ -334,6 +347,7 @@
     #routeBar, #routeNow, #metaRow, #status { color: #6e6e76; }
     #pauseBtn { background: #17233a; color: #8ab4ff; }
     #stopBtn { background: #232327; color: #e7e7ea; }
+    #jumpBtn { background: rgba(26, 26, 30, .96); color: #d4d4d8; border-color: #2a2a30; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
     #historyPanel { background: #0f0f11; }
     #historyPanel .histHead { background: rgba(15, 15, 17, .95); border-color: #242428; }
     .sess { border-color: #242428; }
@@ -513,6 +527,13 @@
   <ul id="list"></ul>
   <div id="current" hidden></div>
 </div>
+
+<button id="jumpBtn" type="button" aria-label="回到最新" title="回到最新" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 5v13"></path>
+    <path d="m6.5 12.5 5.5 5.5 5.5-5.5"></path>
+  </svg>
+</button>
 
 <div id="dock">
   <div class="dockInner">
@@ -989,34 +1010,35 @@ function translateRetry(text, onPartial) {
 }
 
 /* ---------- 字幕条目 ---------- */
-var autoBackTimer = null, ignoreScroll = false;
+var ignoreScroll = false, jumpBtn = $("jumpBtn");
 function nearBottom() {
   return (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 160);
 }
 function scrollBottom() {
-  if (!nearBottom() || panelOpen()) return;   // 用户正在往上翻、或正在看设置面板时，不打断
+  if (!nearBottom() || panelOpen()) { updateJumpBtn(); return; }   // 用户正在往上翻、或正在看设置面板时，不打断
   ignoreScroll = true;
   window.scrollTo(0, document.body.scrollHeight);
   setTimeout(function () { ignoreScroll = false; }, 120);
+  if (jumpBtn) jumpBtn.hidden = true;
 }
 /* 打开设置 / 贴士面板时，暂停所有自动滚动 */
 function panelOpen() {
   return !$("settingsPanel").hidden || !$("helpPanel").hidden;
 }
-/* 往上翻看旧记录时，手停下来 2 秒就自动回到最新位置 */
-function scheduleAutoBack() {
-  if (ignoreScroll || panelOpen()) return;
-  clearTimeout(autoBackTimer);
-  if (nearBottom()) return;
-  autoBackTimer = setTimeout(function () {
+/* 翻到上面看旧记录时，右下角出现「回到最新」按钮，点一下才跳回去 */
+function updateJumpBtn() {
+  if (!jumpBtn || ignoreScroll) return;   // 自动/按钮滚动过程中不闪
+  jumpBtn.hidden = !records.length || nearBottom();
+}
+window.addEventListener("scroll", updateJumpBtn, { passive: true });
+if (jumpBtn) {
+  jumpBtn.onclick = function () {
     ignoreScroll = true;
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-    setTimeout(function () { ignoreScroll = false; }, 800);
-  }, 2000);
+    jumpBtn.hidden = true;
+    setTimeout(function () { ignoreScroll = false; }, 500);
+  };
 }
-["scroll", "touchstart", "touchmove", "pointerdown", "wheel"].forEach(function (ev) {
-  window.addEventListener(ev, scheduleAutoBack, { passive: true });
-});
 
 /* 把零碎的识别片段拼成完整句子再翻译：上下文越长，翻译越准 */
 var pending = "", pendingSince = 0, pendingTimer = null;
@@ -1202,6 +1224,7 @@ if (records.length) {
     setTimeout(function () { ignoreScroll = false; }, 200);
   }, 0);
 }
+updateJumpBtn();
 
 /* 保存成一个文件：要点总结 + 完整中英记录 */
 $("exportBtn").onclick = function () {
@@ -1368,6 +1391,7 @@ function clearView() {
   sessionMark = 0;
   sessionStart = Date.now();
   renderPip();
+  updateJumpBtn();
   window.scrollTo(0, 0);
 }
 
