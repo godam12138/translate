@@ -815,7 +815,6 @@ function translate(text, onPartial, plain) {
   }
   if (terms.length) sys += "\n本课专业术语（识别和翻译都以此为准）：" + terms.join("、");
   var body = {
-    model: model,
     temperature: 0.2,
     messages: [
       { role: "system", content: sys },
